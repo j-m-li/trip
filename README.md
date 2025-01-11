@@ -1,2 +1,2 @@
-# triplejs
-JS to C
+# trip
+3p
