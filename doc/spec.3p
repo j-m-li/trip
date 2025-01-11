@@ -1,0 +1,103 @@
+
+# comment
+
+include "../lib/std.3p"
+
+define MY_CONST 3
+
+class my_struct {
+field one
+field next
+field three
+field four
+
+# args[0]: this
+method init () {
+	set one 1
+	set next null
+	set three 3
+	set four "four"
+}
+
+# args[0]: this
+method dispose () {
+	delete this
+}
+
+# args[0]: this
+# args[1]: increment value
+method do_something (inc) {
+	set next next + inc
+	return one
+}
+}
+
+
+# args[0]: command line argument count
+# args[1]: array of string of each arguments
+func startup (argc, argv) {
+	var x, str, a, b, f
+	ref my_struct s
+
+	set x MY_CONST
+	set str "A string litteral \
+		multi-line\n"
+	set a {array 10} # alloc an array of 10 words
+	set b {bytes 3} # alloc 3 bytes
+
+	set s {new my_struct} # alloc a class
+	s.init
+
+	set a[x] 25
+	set a[0] a[x]
+	set a[1] 1 + 2 - (-3 * 4) / 5 % 6
+
+	poke b 0 65 			# ascii 'A'
+	poke b 1 ({peek b 0} + 2) 	# ascii 'C'
+	poke b 2 0			# nil: end of string
+	print b     			# print AC
+
+	hello_world
+	set f hello_world
+	f
+
+	print10 {ret_ten} # call the ret_ten function and print the returned value
+
+	if x - 5 ?
+		> {print "x greater than 5"},
+		< {print "x less than 5"},
+		= {print "x equal 5"};
+
+	if x ?
+		1 {print "x = 1"},
+		2 {print "x = 2"},
+		-20 {print "x = -20"},
+		<> {print "x not equal zero"},
+		>= {print "x greater or equal zero"},
+		<= {print "x less than or equal zero"}
+	;
+
+	while x ? > { 	# loop while x greater than 0
+		print10 x
+		if x - 2 ? <= continue; # skip and loop if x is less than 3
+		if x - 4 ? < break;	# stop loop if x is less than 4
+		print "\n"
+		set x x - 1
+	}
+
+	print "\n program "
+	print argv[0]
+	print " is terminated\n"
+
+	s.dispose
+	return 0
+}
+
+func hello_world () {
+	print "Hello World!\n"
+}
+
+func ret_ten () {
+	return 10
+}
+
