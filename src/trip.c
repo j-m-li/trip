@@ -44,6 +44,8 @@ struct pair {
 
 struct trip {
 	struct trip *parent;
+	struct trip *next;
+	struct trip *last;
 	char *buf;
 	int pos;
 	int end;
@@ -445,6 +447,8 @@ struct trip *load(char *file)
 	st->indent = 0;
 	st->file = strdup(file);
 	st->parent = 0;
+	st->next = 0;
+	st->last = 0;
 	st->nb_vars = 0;
 	st->nb_defs = 0;
 	st->nb_global = 0;
@@ -664,14 +668,6 @@ char *str_lit(struct trip *st)
 	while (p < end && *p && *p != '"') {
 		if (*p == '\\') {
 			switch (p[1]) {
-			/*case '"':
-				p++;
-				b[l] = '"';
-				break;
-			case 'n':
-				p++;
-				b[l] = '\n';
-				break;*/
 			default:
 				b[l] = *p;
 			}
@@ -690,6 +686,10 @@ char *str_lit(struct trip *st)
 
 int trip__delete(struct trip *st)
 {
+	if (st->next) {
+		trip__delete(st->next);
+		st->next = NULL;
+	}
 	free(st->buf);
 	free(st->file);
 	free(st);
@@ -732,7 +732,6 @@ int expression(struct trip *st)
 		spc = 0;
 	}
 	ok = 0;
-	//		printf(" ID%d ", spc);
 	while (st->pos < st->end && !ok) {
 		c = st->buf[st->pos];
 		switch (st->buf[st->pos]) {
@@ -1539,6 +1538,11 @@ void k_include(struct trip *st)
 	free(buf);
 	if (stn) {
 		stn->parent = st;
+		while (st->parent) {
+			st = st->parent;
+		}
+		st->last->next = stn;
+		st->last = stn;
 		stn->func_name = NULL;
 		stn->class_name = NULL;
 		compound(stn);
@@ -1559,8 +1563,6 @@ void k_include(struct trip *st)
 		st->defs[st->nb_defs] = stn->defs[i];
 		st->nb_defs++;
 	}
-
-
 }
 
 void call(struct trip *st)
@@ -1640,7 +1642,6 @@ void call(struct trip *st)
 		default:
 			expression(st);
 		}
-	
 	}
 	p = st->buf + st->pos;
 	//printf(" PPP %c\n", *p);
@@ -1774,6 +1775,7 @@ int main(int argc, char *argv[])
 	if (argc > 1) {
 		printf("typedef long var;\n");
 		st = load(argv[1]);
+		st->last = st;
 		st->func_name = NULL;
 		st->class_name = NULL;
 		if (st) {
