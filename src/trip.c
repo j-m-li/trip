@@ -37,63 +37,9 @@
 
 #define MAX_MEMBER 127
 
-enum {
-	t_none = 0,
-	t_comment,
-	t_identifier,
-	t_include,
-	t_define,
-	t_const_num,
-	t_const_str,
-	t_const_null,
-	t_const_true,
-	t_const_false,
-	t_class,
-	t_field,
-	t_method,
-	t_func,
-	t_var,
-	t_ref,
-	t_parameter,
-	t_statement,
-	t_set,
-	t_call,
-	t_return,
-	t_if,
-	t_while,
-	t_continue,
-	t_break,
-	t_array,
-	t_bytes,
-	t_new,
-	t_delete,
-	t_this,
-
-	t_pos,
-	t_neg,
-	t_add,
-	t_sub,
-	t_mul,
-	t_div,
-	t_rem,
-	t_eq,
-	t_ne,
-	t_lt,
-	t_gt,
-	t_ge,
-	t_le
-};
-
 struct pair {
 	char *name;
 	char *value;
-};
-
-struct token {
-	int type;
-	char *str;
-	int len;
-	int value;	
 };
 
 struct trip {
@@ -197,6 +143,17 @@ int is_eol(struct trip *st)
 	return 1;
 }
 
+void spaces(struct trip *st)
+{
+	char *p;
+	while (st->pos < st->end) {
+		p = st->buf + st->pos;
+		if (*p != ' ' && *p != '\t') {
+		       break;
+	      	}
+		st->pos++;
+ 	}		
+}
 
 int whitespaces(struct trip *st)
 {
@@ -1539,7 +1496,6 @@ void k_break(struct trip *st)
 	printf("break;\n");
 }
 
-
 void k_continue(struct trip *st)
 {
 	st->pos += 8;
@@ -1548,9 +1504,6 @@ void k_continue(struct trip *st)
 	indent(st);
 	printf("continue;\n");
 }
-
-
-
 
 void k_include(struct trip *st)
 {
@@ -1585,6 +1538,7 @@ void k_include(struct trip *st)
 	stn = load(buf);
 	free(buf);
 	if (stn) {
+		stn->parent = st;
 		stn->func_name = NULL;
 		stn->class_name = NULL;
 		compound(stn);
@@ -1607,17 +1561,6 @@ void k_include(struct trip *st)
 	}
 
 
-}
-void spaces(struct trip *st)
-{
-	char *p;
-	while (st->pos < st->end) {
-		p = st->buf + st->pos;
-		if (*p != ' ' && *p != '\t') {
-		       break;
-	      	}
-		st->pos++;
- 	}		
 }
 
 void call(struct trip *st)
