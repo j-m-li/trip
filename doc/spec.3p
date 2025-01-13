@@ -2,8 +2,17 @@
 # comment
 
 include "../lib/std.3p"
+include "spec1.3p"
 
-define MY_CONST 3
+define MY_CONST 3 		# defs
+
+array array_of_integer { 	# global
+	1, 2, 3, 4
+}
+bytes array_of_bytes {
+	65,66,67,68,69,0
+}
+
 
 class my_struct {
 field one
@@ -16,7 +25,7 @@ method init () {
 	set one 1
 	set next null
 	set three 3
-	set four "four"
+	set four "four!"
 }
 
 # args[0]: this
@@ -24,13 +33,51 @@ method dispose () {
 	delete this
 }
 
+method print_this () {
+	print10 this
+}
+
 # args[0]: this
 # args[1]: increment value
 method do_something (inc) {
+	var s;
 	set next next + inc
+	print "\n";
+	print10 next
+	print "\n";
+	this.print_this
+
+	set s {file_size "README.md"}
+	print "\n";
+	print10 s
+	print "\n";
+	print10 {file_size "README.md"}
+	print "\n";
+	print four
+	print " "
+	print10 {str_cmp four "four! "}
+	print "\n";
+	print {file_load "README.md" 0 {file_size "README.md"}}
+	file_save "bin/test.txt" 0 5 "hello"
+	file_save "bin/test.txt" 7 1 "!"
+
+	set s {str_dup "Yo!"}
+	print s
+	delete s
+	print array_of_bytes
+	print10 array_of_integer[1]
+	print_hi
 	return one
 }
+
+method call_hello() {
+	print "This should be 0: "
+	print10 this
+	print "\n"
+	hello_world
 }
+
+} # end of class my_struct
 
 
 # args[0]: command line argument count
@@ -42,24 +89,26 @@ func startup (argc, argv) {
 	set x MY_CONST
 	set str "A string litteral \
 		multi-line\n"
-	set a {array 10} # alloc an array of 10 words
-	set b {bytes 3} # alloc 3 bytes
+	set a {new array 10} # alloc an array of 10 words
+	set b {new bytes 3} # alloc 3 bytes
 
 	set s {new my_struct} # alloc a class
 	s.init
+
+	print str
 
 	set a[x] 25
 	set a[0] a[x]
 	set a[1] 1 + 2 - (-3 * 4) / 5 % 6
 
-	poke b 0 65 			# ascii 'A'
+	poke b 0 'A' 			# ascii 'A'
 	poke b 1 ({peek b 0} + 2) 	# ascii 'C'
 	poke b 2 0			# nil: end of string
 	print b     			# print AC
 
 	hello_world
-	set f hello_world
-	f
+	set f s.call_hello 	# we can only assign methods to variables, not functions
+	f null			# indirect call of method with dummy "this"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
 
@@ -68,30 +117,35 @@ func startup (argc, argv) {
 		< {print "x less than 5"},
 		= {print "x equal 5"};
 
+	print "\n"
 	if x ?
 		1 {print "x = 1"},
 		2 {print "x = 2"},
 		-20 {print "x = -20"},
+		'A' {print "x = A"},
 		<> {print "x not equal zero"},
 		>= {print "x greater or equal zero"},
 		<= {print "x less than or equal zero"}
 	;
-
+	print "\n"
 	while x ? > { 	# loop while x greater than 0
 		print10 x
 		if x - 2 ? <= continue; # skip and loop if x is less than 3
 		if x - 4 ? < break;	# stop loop if x is less than 4
 		print "\n"
 		set x x - 1
-	}
+	};
+
+	s.do_something 7
+	s.dispose
 
 	print "\n program "
 	print argv[0]
 	print " is terminated\n"
 
-	s.dispose
 	return 0
 }
+
 
 func hello_world () {
 	print "Hello World!\n"
@@ -100,4 +154,5 @@ func hello_world () {
 func ret_ten () {
 	return 10
 }
+
 
