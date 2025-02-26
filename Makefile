@@ -7,8 +7,8 @@ all: bin
 	./bin/trip -c doc/spec.3p > bin/s.c	
 	cc -Wall -g -o bin/spec bin/s.c ;
 	./bin/spec
-	gdb --args ./bin/trip -s doc/spec.3p HELLO World
-	#./bin/trip -s doc/spec.3p HELLO World
+	#gdb --args ./bin/trip -s doc/spec.3p HELLO World
+	./bin/trip -s doc/spec.3p HELLO World
 
 bin:
 	mkdir -p bin
