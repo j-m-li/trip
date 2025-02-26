@@ -35,11 +35,41 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_MEMBER 127
+#define var long
 
-struct pair {
+#define MAX_MEMBER 127
+#define MODE_C 0
+#define MODE_INTERP 1
+#define MODE_PRE_INTER 2
+#define MODE_JS 3
+#define MODE_PHP 4
+#define MODE_SHELL 5
+
+struct cell {
 	char *name;
 	char *value;
+	var data;
+};
+
+struct class_cell {
+	char *name;
+	char *value;
+	var data;
+	struct cell mehtods[MAX_MEMBER+1];
+	int nb_methods;
+};
+
+
+struct context {
+	struct context *parent;
+	struct context *child;
+	char *func_name;
+	char *class_name;
+	struct cell *vars;
+	int nb_vars;
+	struct cell *refs;
+	int nb_refs;
+	var __self;
 };
 
 struct trip {
@@ -56,16 +86,32 @@ struct trip {
 	int indent;
 	int replaced;
 	char *file;
-	char *vars[MAX_MEMBER+1];
+	struct cell vars[MAX_MEMBER+1];
 	int nb_vars;
-	char *global[MAX_MEMBER+1];
-	int nb_global;
-	struct pair refs[MAX_MEMBER+1];
+	struct cell refs[MAX_MEMBER+1];
 	int nb_refs;
-	char *defs[MAX_MEMBER+1];
+
+	struct cell global[MAX_MEMBER+1];
+	int nb_global;
+	struct cell defs[MAX_MEMBER+1];
 	int nb_defs;
+	struct cell classes[MAX_MEMBER+1];
+	int nb_classes;
+	struct cell funcs[MAX_MEMBER+1];
+	int nb_funcs;
+
 	int main;
 	int returnn;
+	int mode;
+	int break_;
+	int continue_;
+	int return_;
+	var return_val;
+
+	struct context *ctx;
+	var __self;
+	var stack[MAX_MEMBER+1];
+	int sp;
 
 	char *func_name;
 	char *class_name;
@@ -77,7 +123,13 @@ struct trip *load(char *file);
 void compound(struct trip *st);
 void spaces(struct trip *st);
 int expression(struct trip *st);
+var run(struct trip *st, char *class_, char *name);
+void k_func(struct trip *st);
+void k_method(struct trip *st);
+void k_define(struct trip *st);
 char *identifier(struct trip *st, int *l);
+int id_cmp(char *a, char *b);
+char *id_dup(char *a);
 
 int file_size(char *path)
 {
@@ -227,11 +279,33 @@ void indent(struct trip *st)
 }
 
 
+void push(struct trip *st, var b)
+{
+	st->stack[st->sp] = b;
+	if (st->sp < MAX_MEMBER) {
+		st->sp++;
+	} else {
+		exit(-2);
+	}
+}
+
+var pop(struct trip *st)
+{
+	if (st->sp > 0) {
+		st->sp--;
+	} else {
+		__builtin_trap();
+		exit(-3);
+	}
+	return st->stack[st->sp];
+}
+
+
 char *get_class(struct trip *st, char *name)
 {
 	int i;
 	for (i = 0; i < st->nb_refs; i++) {
-		if (!strcmp(st->refs[i].name, name)) {
+		if (!id_cmp(st->refs[i].name, name)) {
 			return st->refs[i].value;
 		}
 	}
@@ -242,7 +316,7 @@ int is_var(struct trip *st, char *name)
 {
 	int i;
 	for (i = 0; i < st->nb_vars; i++) {
-		if (!strcmp(st->vars[i], name)) {
+		if (!id_cmp(st->vars[i].name, name)) {
 			return 1;
 		}
 	}
@@ -253,7 +327,7 @@ int is_def(struct trip *st, char *name)
 {
 	int i;
 	for (i = 0; i < st->nb_defs; i++) {
-		if (!strcmp(st->defs[i], name)) {
+		if (!id_cmp(st->defs[i].name, name)) {
 			return 1;
 		}
 	}
@@ -264,13 +338,12 @@ int is_global(struct trip *st, char *name)
 {
 	int i;
 	for (i = 0; i < st->nb_global; i++) {
-		if (!strcmp(st->global[i], name)) {
+		if (!id_cmp(st->global[i].name, name)) {
 			return 1;
 		}
 	}
 	return 0;
 }
-
 
 int is(struct trip *st, char *p, const char *k)
 {
@@ -290,10 +363,6 @@ int is(struct trip *st, char *p, const char *k)
 	}
 	return 0;
 }
-
-
-
-
 
 int end_of_expr(struct trip *st)
 {
@@ -337,6 +406,16 @@ int end_of_expr(struct trip *st)
 }
 
 
+
+void skip(struct trip *st)
+{
+	while (st->pos < st->end && st->buf[st->pos] != '\n') {
+		st->pos++;
+	}
+	st->pos++;
+	st->line++;
+}
+
 int string_len(char *b)
 {
 	int e = b[0];
@@ -355,6 +434,54 @@ int string_len(char *b)
 	return i;
 }
 
+int id_cmp(char *a, char *b)
+{
+	int i;
+	i = 0;
+	while ((b[i] >= 'a' && b[i] <= 'z') ||
+		(b[i] >= 'A' && b[i] <= 'Z') ||
+		(b[i] == '_') ||
+		(i > 0 && b[i] >= '0' && b[i] <= '9')) 
+	{
+		if (a[i] != b[i]) {
+			return -1;
+		}
+		i++;
+	}
+	if ((a[i] >= 'a' && a[i] <= 'z') ||
+		(a[i] >= 'A' && a[i] <= 'Z') ||
+		(a[i] == '_') ||
+		(i > 0 && a[i] >= '0' && a[i] <= '9')) 
+	{
+		return 1;
+	}
+	return 0;
+}
+
+char *id_tmp(struct trip *st, char *b)
+{
+	int i;
+	i = 0;
+	if (!b) {
+		return NULL;
+	}
+	while ((b[i] >= 'a' && b[i] <= 'z') ||
+		(b[i] >= 'A' && b[i] <= 'Z') ||
+		(b[i] == '_') ||
+		(i > 0 && b[i] >= '0' && b[i] <= '9')) 
+	{
+		if (i >= sizeof(st->tmp) - 1) {
+			st->tmp[0] = 0;
+			return st->tmp;
+		}
+		st->tmp[i] = b[i];
+		i++;
+	}
+	st->tmp[i] = 0;
+	return st->tmp;
+}
+
+
 int id_len(char *b)
 {
 	int i;
@@ -372,6 +499,21 @@ int id_len(char *b)
 	return i;
 }
 
+char *id_dup(char *b)
+{
+	int l;
+	char *v;
+	l = id_len(b);
+	v = malloc(l + 1);
+	v[l] = 0;
+	while (l > 0) {
+		l--;
+		v[l] = b[l];
+	}
+	return v;
+}
+
+
 int printsub(char *name, int len)
 {
 	int o;
@@ -382,15 +524,50 @@ int printsub(char *name, int len)
 	return 0;
 }
 
+void declare_class(struct trip *st, char *cid)
+{
+	if (st->nb_classes >= MAX_MEMBER) {
+		error("too many classes", st);
+	}
+	st->classes[st->nb_classes].name = cid;
+	st->classes[st->nb_classes].data = st->pos;
+	st->nb_classes++;
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("struct %s;\n", id_tmp(st,cid));
+	}
+}
+
+void declare_func(struct trip *st, char *id)
+{	if (st->nb_funcs >= MAX_MEMBER) {
+		error("too many functions", st);
+	}
+	st->funcs[st->nb_funcs].name = id;
+	st->funcs[st->nb_funcs].data = st->pos;
+	st->nb_funcs++;
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("var %s();\n", id_tmp(st,id));
+	}
+}
+
+void declare_method(struct trip *st, char *cid, char *id)
+{
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("var %s__", id_tmp(st, cid));
+		printf("%s();\n", id_tmp(st,id));
+	}
+}
+
+
 void declare(struct trip *st)
 {
 	char *p;
 	char *id;
 	int l;
-	int o;
 	char *cid;
 	int cl;
-	int co;
 
 	while (st->pos < st->end) {
 		whitespaces(st);
@@ -399,29 +576,19 @@ void declare(struct trip *st)
 			st->pos += 5;
 			whitespaces(st);
 			cid = identifier(st, &cl);
-			co = cid[cl];
-			cid[cl] = 0;
-			printf("struct %s;\n", cid);
-			cid[cl] = co;
+			declare_class(st, cid);
 		} else if (is(st, p, "func")) {
 			st->pos += 4;
 			whitespaces(st);
 			id = identifier(st, &l);
-			o = id[l];
-			id[l] = 0;
-			printf("var %s();\n", id);
-			id[l] = o;
+			declare_func(st, id);
+		} else if (is(st, p, "define")) {
+			k_define(st);
 		} else if (is(st, p, "method")) {
 			st->pos += 6;
 			whitespaces(st);
 			id = identifier(st, &l);
-			o = id[l];
-			id[l] = 0;
-			cid[cl] = 0;
-			printf("var %s__%s();\n", cid, id);
-			id[l] = o;
-			cid[cl] = co;
-	
+			declare_method(st, cid, id);
 		} else {
 			while (*p != '\n') {
 				if (*p == '\\' && p[1] == '\n') {
@@ -435,6 +602,196 @@ void declare(struct trip *st)
 	st->pos = 0;
 
 }
+
+struct cell *save_cells(int nb_cell, struct cell *src)
+{	
+	struct cell *vars;
+	int i;
+
+	vars = malloc((nb_cell+1) * sizeof(*vars));
+	for (i = 0; i < nb_cell; i++) {
+		if (src[i].name) {
+			vars[i].name = id_dup(src[i].name);
+		} else {
+			vars[i].name = NULL;
+		}
+		if (src[i].value) {
+			vars[i].value = id_dup(src[i].value);
+		} else {
+			vars[i].value = NULL;
+		}
+		vars[i].data = src[i].data;
+	}
+	return vars;
+}
+
+var push_context(struct trip *st)
+{
+	struct context *ctx;
+
+	ctx = malloc(sizeof(*ctx));
+	ctx->parent = st->ctx;
+	ctx->child = NULL;
+	if (ctx->parent) {
+		ctx->parent->child = ctx;
+	}
+	st->ctx = ctx;
+	ctx->__self = st->__self;
+	if (st->func_name) {
+		ctx->func_name = id_dup(st->func_name);
+	} else {
+		ctx->func_name = NULL;
+	}
+	if (st->class_name) {
+		ctx->class_name = id_dup(st->class_name);
+	} else {
+		ctx->class_name = NULL;
+	}
+	ctx->nb_vars = st->nb_vars;
+	ctx->vars = save_cells(st->nb_vars, st->vars);
+	ctx->nb_refs = st->nb_refs;
+	ctx->refs = save_cells(st->nb_refs, st->refs);
+	return 0;
+}
+
+void free_cells_val(int nb_cell, struct cell *src)
+{
+	int i;
+	for (i = 0; i < nb_cell; i++) {
+		if (src[i].name) {
+			free(src[i].name);
+		}
+		if (src[i].value) {
+			free(src[i].value);
+		}
+	}
+}
+
+void restore_cells(int nb_cell, struct cell *src, struct cell *dest)
+{	
+	int i;
+
+	for (i = 0; i < nb_cell; i++) {
+		dest[i].name = src[i].name;
+		dest[i].value = src[i].value;
+		dest[i].data = src[i].data;
+	}
+}
+
+
+var pop_context(struct trip *st)
+{
+	struct context *ctx = st->ctx;
+	st->ctx = ctx->parent;
+	if (ctx->child) {
+		free_cells_val(st->nb_vars, st->vars);
+		free_cells_val(st->nb_refs, st->refs);
+
+		if (st->func_name) {
+			free(st->func_name);
+		}
+		if (st->class_name) {
+			free(st->class_name);
+		}
+	}
+	st->__self = ctx->__self;
+	st->func_name = ctx->func_name;
+	st->class_name = ctx->class_name;
+	restore_cells(ctx->nb_vars, ctx->vars, st->vars);
+	restore_cells(ctx->nb_refs, ctx->refs, st->refs);
+	free(ctx->vars);
+	free(ctx->refs);
+	free(ctx);
+	return 0;
+}
+
+var run(struct trip *st, char *class_, char *name) 
+{
+	char *p;
+	char *id;
+	int l;
+	int o;
+	char *cid;
+	int cl;
+	int co;
+	int old_pos = st->pos;
+	char *fn = NULL;
+	char *cn = NULL;
+	int pos;
+
+	while (st->pos < st->end) {
+		whitespaces(st);
+		p = st->buf + st->pos;
+		if (is(st, p, "class")) {
+			st->pos += 5;
+			whitespaces(st);
+			cid = identifier(st, &cl);
+			co = cid[cl];
+			cid[cl] = 0;
+			cid[cl] = co;
+		} else if (is(st, p, "func")) {
+			pos = st->pos;
+			st->pos += 4;
+			whitespaces(st);
+			id = identifier(st, &l);
+			o = id[l];
+			id[l] = 0;
+			if (!class_ && !id_cmp(name, id)) {
+				st->pos = pos;
+				fn = st->func_name;
+				cn = st->class_name;
+				st->func_name = NULL;
+				st->class_name = NULL;
+				id[l] = o;
+				k_func(st);
+				st->func_name = fn;
+				st->class_name = cn;
+				st->pos = old_pos;
+				return 0;
+			}
+			id[l] = o;
+		} else if (is(st, p, "method")) {
+			pos = st->pos;
+			st->pos += 6;
+			whitespaces(st);
+			id = identifier(st, &l);
+			o = id[l];
+			id[l] = 0;
+			cid[cl] = 0;
+			if (class_ && !id_cmp(name, id) && 
+					!id_cmp(class_, cid)) 
+			{
+				st->pos = pos;
+				fn = st->func_name;
+				cn = st->class_name;
+				st->func_name = NULL;
+				st->class_name = cid;
+				id[l] = o;
+				cid[cl] = co;
+				k_method(st);
+				st->func_name = fn;
+				st->class_name = cn;
+				st->pos = old_pos;
+				return 0;
+			}
+			id[l] = o;
+			cid[cl] = co;
+	
+		} else {
+			while (*p != '\n') {
+				if (*p == '\\' && p[1] == '\n') {
+					st->pos++;
+				}
+				st->pos++;
+				p = st->buf + st->pos;
+			}
+		}
+	}
+	st->pos = old_pos;
+	return 3;
+}
+
+
 struct trip *load(char *file) 
 {
 	struct trip *st;
@@ -451,14 +808,22 @@ struct trip *load(char *file)
 	st->last = 0;
 	st->nb_vars = 0;
 	st->nb_defs = 0;
+	st->nb_classes = 0;
+	st->nb_funcs = 0;
 	st->nb_global = 0;
 	st->main = 0;
 	st->returnn = 0;
+	st->return_ = 0;
+	st->break_ = 0;
+	st->continue_ = 0;
+	st->ctx = NULL;
+	st->__self = 0;
+	st->sp = 0;
+	st->stack[0] = 0;
 	if (!st->buf) {
 		free(st);
 		st = NULL;
 	}
-	declare(st);
 	return st;
 }
 
@@ -537,14 +902,186 @@ char *identifier(struct trip *st, int *l)
 	return b;
 }
 
-char *variable(struct trip *st)
+int get_class_def(struct trip *st, char *name)
+{
+	int i;
+	int pos = -1;
+	for (i = 0; i < st->nb_classes; i++) {
+		if (!id_cmp(st->classes[i].name, name)) {
+			pos = (int)st->classes[i].data;
+			break;
+		}
+	}
+	return pos;
+}
+
+int get_member_pos(struct trip *st, char *clas, char *type, char *name)
+{
+	int l;
+	char *p;
+	char *id;
+	int n;
+	int op;
+	int i;
+	int pos = -1;
+	
+	op = st->pos;
+	n = 0;
+	st->pos = get_class_def(st, clas);
+	if (st->pos < 0) {
+		st->pos = op; 
+		return 0;
+	}
+	while (st->pos < st->end) {
+		whitespaces(st);
+		p = st->buf + st->pos;
+		if (is(st, p, "field")) {
+			st->pos += 5;
+			whitespaces(st);
+			id = identifier(st, &l);
+			end_of_expr(st);
+			if (!strcmp(type, "field")) {
+				if (!id_cmp(id, name)) {
+					st->pos = op;
+					return n;
+				}
+			}
+			n++;
+		} else if (is(st, p, "method")) {
+			st->pos += 6;
+			whitespaces(st);
+			id = identifier(st, &l);
+			whitespaces(st);
+			if (!strcmp(type, "method")) {
+				if (!id_cmp(id, name)) {
+					n = st->pos;
+					st->pos = op;
+					return n;
+				}
+			}
+			skip(st);
+		} else if (is(st, p, "class")) {
+			break;
+		} else if (is(st, p, "func")) {
+			break;
+		} else {
+			while (*p != '\n') {
+				if (*p == '\\' && p[1] == '\n') {
+					st->pos++;
+				}
+				st->pos++;
+				p = st->buf + st->pos;
+			}
+		}
+	}
+	st->pos = op; 
+	return -1;
+}
+
+
+
+int size_of(struct trip *st, char *name)
+{
+	int l;
+	char *p;
+	char *id;
+	int n;
+	int op;
+	int i;
+	int pos = -1;
+	
+	op = st->pos;
+	n = 0;
+	st->pos = get_class_def(st, name);
+	if (st->pos < 0) {
+		st->pos = op; 
+		return 0;
+	}
+	while (st->pos < st->end) {
+		whitespaces(st);
+		p = st->buf + st->pos;
+		if (is(st, p, "field")) {
+			st->pos += 5;
+			whitespaces(st);
+			id = identifier(st, &l);
+			end_of_expr(st);
+			n++;
+		} else if (is(st, p, "method")) {
+			break;
+		} else if (*p == '}') {
+			break;
+		} else {
+			while (*p != '\n') {
+				if (*p == '\\' && p[1] == '\n') {
+					st->pos++;
+				}
+				st->pos++;
+				p = st->buf + st->pos;
+			}
+		}
+	}
+	st->pos = op; 
+	return n * sizeof(var);
+}
+
+
+
+var get_data(struct trip *st, char *is_self, char *name, int return_addr)
+{
+	int i;
+	int idx;
+	var *arr;
+	if (is_self && is_self[0]) {
+		idx = get_member_pos(st, st->class_name, "field", name);
+		if (idx < 0) {
+			error("cannot find field", st);
+		}
+		arr = (var*)st->__self;
+		if (return_addr) {
+			return	(var)(arr + idx);
+		}
+		return arr[idx];
+	} else {
+		for (i = 0; i < st->nb_vars; i++) {
+			if (!id_cmp(st->vars[i].name, name)) {
+				if (return_addr) {
+					return (var)&st->vars[i].data;
+				}
+				return st->vars[i].data;
+			}
+		}
+		for (i = 0; i < st->nb_refs; i++) {
+			if (!id_cmp(st->refs[i].name, name)) {
+				if (return_addr) {
+					return (var)&st->refs[i].data;
+				}
+				return st->refs[i].data;
+			}
+		}
+	
+		for (i = 0; i < st->nb_defs; i++) {
+			if (!id_cmp(st->defs[i].name, name)) {
+				return st->defs[i].data;
+			}
+		}
+		for (i = 0; i < st->nb_funcs; i++) {
+			if (!id_cmp(st->funcs[i].name, name)) {
+				return st->funcs[i].data;
+			}
+		}
+	
+	}
+	error("Cannot find variable", st);
+	return 0;
+}
+
+char *variable(struct trip *st, int return_addr)
 {
 	char *xid;
 	char *id;
 	int l;
-	int o;
 	int x;
-	int ox;
+	var *arr;
 	char *sel;
 	char *cls;
 	sel = "";
@@ -552,65 +1089,127 @@ char *variable(struct trip *st)
 	if (!id) {
 		return NULL;
 	}
-	o = id[l];
 	if (st->buf[st->pos] == '[') {
-		id[l] = 0;
 		if (!is_var(st, id) && !get_class(st, id) 
 				&& !is_def(st, id) && !is_global(st, id)) 
 		{
 			sel = "__self->";
 		}
-		printf("((var*)(%s%s))[", sel, id);
-		id[l] = o;
+		if (st->mode == MODE_INTERP) {
+			arr = (var*)get_data(st, sel, id, 0);
+		} else {
+			printf("((var*)(%s%s))[", sel, id_tmp(st,id));
+		}
 		st->pos++;
 		expression(st);
 		if (st->buf[st->pos] != ']') {
 			error("] !", st);
 		}
-		printf("]");
+		if (st->mode == MODE_INTERP) {
+			if (return_addr) {
+				push(st, (var)(arr + pop(st)));
+			} else {
+				push(st, arr[pop(st)]);
+			}
+		} else {
+			printf("]");
+		}
 		st->pos++;
 	} else {
-		id[l] = 0;
-		if (!strcmp("null", id)) {
-			printf("((var)0)");
-		} else if (!strcmp("false", id)) {
-			printf("((var)0)");
-		} else if (!strcmp("true", id)) {
-			printf("((var)1)");
-		} else if (!strcmp("this", id)) {
-			printf("self");
-		} else if (!strcmp("continue", id)) {
-			indent(st);
-			printf("\tcontinue;\n");
-		} else if (!strcmp("break", id)) {
-			indent(st);
-			printf("\tbreak;\n");
+		if (!id_cmp("null", id)) {
+			if (st->mode == MODE_INTERP) {
+				push(st, 0);
+			} else {
+				printf("((var)0)");
+			}
+		} else if (!id_cmp("false", id)) {
+			if (st->mode == MODE_INTERP) {
+				push(st, 0);
+			} else {
+				printf("((var)0)");
+			}
+		} else if (!id_cmp("true", id)) {
+			if (st->mode == MODE_INTERP) {
+				push(st, 1);
+			} else {
+				printf("((var)1)");
+			}
+		} else if (!id_cmp("this", id)) {
+			if (st->mode == MODE_INTERP) {
+				push(st, (var)st->__self);
+			} else {
+				printf("self");
+			}
+		} else if (!id_cmp("continue", id)) {
+			if (st->mode == MODE_INTERP) {
+				st->continue_ = 1;
+			} else {
+				indent(st);
+				printf("\tcontinue;\n");
+			}
+		} else if (!id_cmp("break", id)) {
+			if (st->mode == MODE_INTERP) {
+				st->break_ = 1;
+			} else {
+				indent(st);
+				printf("\tbreak;\n");
+			}
 		} else {
 			cls = get_class(st, id);
 			if (is_def(st, id) || is_global(st, id)) {
-				printf("%s", id);
+				if (st->mode == MODE_INTERP) {
+					push(st, get_data(st, NULL, 
+						id, return_addr));
+				} else {
+					printf("%s", id_tmp(st,id));
+				}
 			} else if (!is_var(st, id) && !cls) {
 				sel = "__self->";
-				printf("%s%s", sel, id);
-			} else if (o == '.' && cls) {
-				printf("(var)%s__", cls);
+				if (st->mode == MODE_INTERP) {
+					push(st, get_data(st, sel, 
+							id, return_addr));
+				} else {
+					printf("%s%s", sel, id_tmp(st,id));
+				}
+			} else if (id[l] == '.' && cls) {
+				if (st->mode == MODE_INTERP) {
+				} else {
+					printf("(var)%s__", id_tmp(st,cls));
+				}
 				st->pos++;
 				xid = identifier(st, &x);
 				if (xid) {
-					ox = xid[x];
-					xid[x] = 0;
-					printf("%s", xid);
-					xid[x] = ox;
+					if (st->mode == MODE_INTERP) {
+						push(st, get_member_pos(st,	
+							cls, "method", xid));
+					} else {
+						printf("%s", id_tmp(st,xid));
+					}
+				} else {
+					error("error0", st);
 				}
 			} else if (cls) {
-				printf("(*((var*)&%s))", id);
-			} else if (!strcmp("this", id)) {
-				printf("self");
+				if (st->mode == MODE_INTERP) {
+					push(st, get_data(st, NULL, 
+						id, return_addr));
+				} else {
+					printf("(*((var*)&%s))", id_tmp(st,id));
+				}
+			} else if (!id_cmp("this", id)) {
+				if (st->mode == MODE_INTERP) {
+					push(st, st->__self);
+				} else {
+					printf("self");
+				}
 			} else {
-				printf("%s", id);
+				if (st->mode == MODE_INTERP) {
+					push(st, get_data(st, NULL, 
+						id, return_addr));
+				} else {
+					printf("%s", id_tmp(st,id));
+				}
 			}
 		}
-		id[l] = o;
 	}
 	return id;
 }
@@ -716,25 +1315,21 @@ int const_expr(struct trip *st)
 	return ok;
 }
 
-int expression(struct trip *st)
+int expression1(struct trip *st, int prec, int spc)
 {
 	int ok;
 	int c;
+	var a, b;
 	char *id;
-	int spc;
-	switch (st->buf[st->pos]) {
-	case ' ':
-	case '\t':
-		spaces(st);
-		spc = 1;
-		break;
-	default:
-		spc = 0;
+	var *arr;
+	int has_primary = 1;
+	if (spc == 0) {
+		has_primary = 0;
 	}
 	ok = 0;
 	while (st->pos < st->end && !ok) {
 		c = st->buf[st->pos];
-		switch (st->buf[st->pos]) {
+		switch (c) {
 		case ';':
 		case '?':
 			ok = 1;
@@ -769,55 +1364,138 @@ int expression(struct trip *st)
 			return 1;
 		case '(':
 			st->pos++;
-			printf("(");
-			expression(st);
-			printf(")");
+			if (st->mode == MODE_INTERP) {
+				expression(st);
+			} else {
+				printf("(");
+				expression(st);
+				printf(")");
+			}
 			c = st->buf[st->pos];
 			if (c == ')') {
 				st->pos++;
 			} else {
 				error(") expected", st);
 			}
+			has_primary = 1;
 			break;
 	
 		case '[':
 			st->pos++;
-			printf("[");
-			expression(st);
-			printf("]");
+			if (st->mode == MODE_INTERP) {
+				arr = (var*)pop(st);
+				expression(st);
+				push(st, arr[pop(st)]);
+			} else {
+				printf("[");
+				expression(st);
+				printf("]");
+			}
 			c = st->buf[st->pos];
 			if (c == ']') {
 				st->pos++;
 			} else {
 				error("] expected", st);
 			}
+			has_primary = 1;
 			break;
 		case '{':
 			st->pos++;
 			compound(st);
+			if (st->mode == MODE_INTERP) {
+
+			}
 			c = st->buf[st->pos];
 			if (c == '}') {
 				st->pos++;
 			} else {
 				error("} expected", st);
 			}
+			has_primary = 1;
 			break;
-		case '+':
 		case '-':
+		case '+':
+			if (!has_primary) {
+				if (prec > 16) {
+					return 0;
+				}
+			} else {
+				if (prec > 13) {
+					return 0;
+				}
+			}
+			st->pos++;
+			if (!has_primary) {
+				if (st->mode == MODE_INTERP) {
+					printf("NOOO PRIMM\n");
+				} else {
+					printf("%c", c); 
+				}
+				expression1(st, 16 + 1, spc);
+				if (c == '-') {
+					if (st->mode == MODE_INTERP) {
+						push(st, -pop(st));
+					}
+				}
+			} else {
+				if (st->mode == MODE_INTERP) {
+					expression1(st, 13 + 1, spc);
+					b = pop(st);
+					a = pop(st);
+					if (c == '-') {
+						push(st, a - b);
+					} else {
+						push(st, a + b);
+					}
+				} else {
+					printf("%c", c); 
+					expression1(st, 13 + 1, spc);
+				}
+			}
+			break;
 		case '*':
 		case '/':
 		case '%':
-			printf("%c", c); 
+			if (prec > 14) {
+				return 0;
+			}
 			st->pos++;
+			if (st->mode == MODE_INTERP) {
+				expression1(st, 14 + 1, spc);
+				b = pop(st);
+				a = pop(st);
+				switch (c) {
+				case '*':
+					push(st, a * b);
+					break;
+				case '/':
+					push(st, a / b);
+					break;
+				case '%':
+					push(st, a % b);
+					break;
+				}
+			} else {
+				printf("%c", c); 
+				expression1(st, 14 + 1, spc);
+			}
 			break;
 		case ' ':
 		case '\t':
-			printf(" "); 
+			if (st->mode == MODE_INTERP) {
+			} else {
+				printf(" ");
+		        }	
 			spaces(st);
 			break;
 		case '"':
 			id = str_lit(st);
-			printf("(var)\"%s\"", id);
+			if (st->mode == MODE_INTERP) {
+				push(st, (var)id);
+			} else {
+				printf("(var)\"%s\"", id);
+			}
+			has_primary = 1;
 			break;
 		case '\'':
 		case '0':
@@ -830,13 +1508,23 @@ int expression(struct trip *st)
 		case '7':
 		case '8':
 		case '9':
-			printf("%d", num_lit(st)); 
+			if (st->mode == MODE_INTERP) {
+				push(st, num_lit(st));
+			} else {
+				printf("%d", num_lit(st)); 
+			}
+			has_primary = 1;
 			break;
 		default:
-			id = variable(st);
+			id = variable(st, 0);
 			if (!id) {
-				printf("%c", c); 
+				if (st->mode == MODE_INTERP) {
+				} else {
+					printf("%c", c); 
+				}
 				st->pos++;
+			} else {
+				has_primary = 1;
 			}
 		}
 		if (spc) {
@@ -850,9 +1538,29 @@ int expression(struct trip *st)
 
 }
 
+int expression(struct trip *st)
+{
+	int spc;
+
+	switch (st->buf[st->pos]) {
+	case ' ':
+	case '\t':
+		spaces(st);
+		spc = 1;
+		break;
+	default:
+		spc = 0;
+	}
+
+	return expression1(st, 0, spc);
+}
+
 void condbody(struct trip *st)
 {
-	printf("{\n");
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("{\n");
+	}
 	whitespaces(st);
 	
 	if (st->pos < st->end && st->buf[st->pos] == '{') {
@@ -868,8 +1576,11 @@ void condbody(struct trip *st)
 		expression(st);
 	}
 	
-	indent(st);
-	printf("}");
+	if (st->mode == MODE_INTERP) {
+	} else {
+		indent(st);
+		printf("}");
+	}
 }
 
 int conditional(struct trip *st, int is_while)
@@ -879,6 +1590,7 @@ int conditional(struct trip *st, int is_while)
 	char *f;
 	int n = 0;
 	ok = 0;
+	// FIXME
 	if (is_while) {
 		f = "while";
 	} else {
@@ -987,31 +1699,57 @@ void k_define(struct trip *st)
 	char *val;
 	int n;
 	int l;
+	int o;
+	int i;
 
 	st->pos += 6;
 	whitespaces(st);
 	id = identifier(st, &l);
 	if (id) {
 		whitespaces(st);
+		o = id[l];
 		id[l] = 0;
+		for (i = 0; i < st->nb_defs; i++) {
+			if (!id_cmp(st->defs[i].name, id)) {
+				skip(st);
+				return;	
+			}
+		}
+		if (st->mode == MODE_INTERP) {
+		} else {
+			printf("#define %s ", id);
+		}
 		s = str_lit(st);
-		printf("#define %s ", id);
 		if (st->nb_defs >= MAX_MEMBER) {
 			error("too many define", st);
 		}
-		st->defs[st->nb_defs] = id;
-		st->nb_defs++;
+		st->defs[st->nb_defs].name = id_dup(id);
+		id[l] = o;
 		if (s) {
-			printf("(var)\"%s\"\n", s);
+			if (st->mode == MODE_INTERP) {
+				st->defs[st->nb_defs].data = (var)id_dup(s);
+			} else {
+				printf("(var)\"%s\"\n", s);
+			}
 		} else {
 			val = identifier(st, &l);
 			if (val) {
-				printf("%s\n", val);
+				if (st->mode == MODE_INTERP) {
+					st->defs[st->nb_defs].data = 
+						(var)id_dup(val);
+				} else {
+					printf("%s\n", val);
+				}
 			} else {
 				n = num_lit(st);
-				printf("%d\n", n);
+				if (st->mode == MODE_INTERP) {
+					st->defs[st->nb_defs].data = n;
+				} else {
+					printf("%d\n", n);
+				}
 			}
 		}
+		st->nb_defs++;
 	}
 	end_of_expr(st);
 }
@@ -1033,7 +1771,10 @@ void k_class(struct trip *st)
 	s[l] = 0;
 	st->class_name = s;
 	st->func_name = NULL;
-	printf("struct %s {\n", st->class_name);
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("struct %s {\n", id_tmp(st, st->class_name));
+	}
 	whitespaces(st);
 }
 
@@ -1043,7 +1784,7 @@ void parameters(struct trip *st, int n)
 	int op;
 	int l;
 	int o;
-
+	// FIXME
 	whitespaces(st);
 	op = operator(st);
 	while (op != ')') {
@@ -1059,7 +1800,7 @@ void parameters(struct trip *st, int n)
 		if (st->nb_vars >= MAX_MEMBER) {
 			error("too many parmeters", st);
 		}
-		st->vars[st->nb_vars] = s;
+		st->vars[st->nb_vars].name = s;
 		st->nb_vars++;
 		s[l] = o;
 		whitespaces(st);
@@ -1084,7 +1825,7 @@ void k_func(struct trip *st)
 	if (op == '(') {
 		s[l] = 0;
 		st->func_name = s;
-		printf("var %s(", st->func_name);
+		printf("var %s(", id_tmp(st, st->func_name));
 		parameters(st, 0);
 		whitespaces(st);
 		op = operator(st);
@@ -1101,6 +1842,7 @@ void k_func(struct trip *st)
 			st->pos++;
 			whitespaces(st);
 			st->func_name = NULL;
+			st->return_ = 1;
 			return;
 		}
 	}
@@ -1126,7 +1868,8 @@ void k_method(struct trip *st)
 	if (op == '(') {
 		s[l] = 0;
 		st->func_name = s;
-		printf("var %s__%s(var self",st->class_name, st->func_name);
+		printf("var %s__",id_tmp(st,st->class_name));
+		printf("%s(var self", id_tmp(st,st->func_name));
 		whitespaces(st);
 		parameters(st, 1);
 		whitespaces(st);
@@ -1151,6 +1894,7 @@ void k_method(struct trip *st)
 				st->pos++;
 				whitespaces(st);
 			}
+			st->return_ = 1;
 			return;
 		}
 	}
@@ -1167,11 +1911,20 @@ void k_print(struct trip *st)
 	indent(st);
 	if (s) {
 		end_of_expr(st);
-		printf("printf(\"%%s\",\"%s\");\n", s);
+		if (st->mode == MODE_INTERP) {
+			printf(s);
+		} else {
+			printf("printf(\"%%s\",\"%s\");\n", s);
+		}
 	} else {
-		printf("printf(\"%%s\",(char*)(");
-		expression(st);
-		printf("));\n");
+		if (st->mode == MODE_INTERP) {
+			expression(st);
+			printf("%s", (char*)pop(st));
+		} else {
+			printf("printf(\"%%s\",(char*)(");
+			expression(st);
+			printf("));\n");
+		}
 		end_of_expr(st);
 	}
 }
@@ -1181,9 +1934,14 @@ void k_print10(struct trip *st)
 	st->pos += 7;
 	whitespaces(st);
 	indent(st);
-	printf("printf(\"%%ld\",(long)(");
-	expression(st);
-	printf("));\n");
+	if (st->mode == MODE_INTERP) {
+		expression(st);
+		printf("%ld", pop(st));
+	} else {
+		printf("printf(\"%%ld\",(long)(");
+		expression(st);
+		printf("));\n");
+	}
 	end_of_expr(st);
 }
 
@@ -1202,17 +1960,37 @@ void k_field(struct trip *st)
 void k_set(struct trip *st)
 {
 	int i;
+	var *arr;
+	var v;
 	st->pos += 3;
 	whitespaces(st);
-	indent(st);
-	variable(st);
-	printf(" = ");
-	i = st->indent;
-	st->indent = -1;
+	if (st->mode == MODE_INTERP) {
+	printf("STACK %d\n", st->sp);
+	} else {
+		indent(st);
+	}
+	variable(st, 1);
+	if (st->mode == MODE_INTERP) {
+	printf("STACK1 %d %x\n", st->sp, st->stack[st->sp - 1]);
+	} else {
+		printf(" = ");
+		i = st->indent;
+		st->indent = -1;
+	}
 	whitespaces(st);
 	expression(st);
-	st->indent = i;
-	printf(";\n");
+	if (st->mode == MODE_INTERP) {
+	printf("STACK2 %d\n", st->sp);
+		printf("\narr iiii LINE %d %p\n", st->line, id_tmp(st,st->func_name));
+		printf("arr iiii LINE %d %s\n", st->line, id_tmp(st, st->func_name));
+		v = pop(st);
+		arr = (var*)pop(st);
+		printf("\narr %x %x\n", arr, v);
+		arr[0] = v;
+	} else {
+		st->indent = i;
+		printf(";\n");
+	}
 }
 
 void k_delete(struct trip *st)
@@ -1225,7 +2003,7 @@ void k_delete(struct trip *st)
 	end_of_expr(st);
 	id[l] = 0;
 	indent(st);
-	if (!strcmp(id, "this")) {
+	if (!id_cmp(id, "this")) {
 		printf("free((void*)self);\n");
 	} else {
 		printf("free((void*)%s);\n", id);
@@ -1237,6 +2015,7 @@ void k_var(struct trip *st)
 	char *id;
 	int l;
 	int n = 0;
+	int o;
 	st->pos += 3;
 	whitespaces(st);
 	printf("\tvar ");
@@ -1244,34 +2023,38 @@ void k_var(struct trip *st)
 	id = identifier(st, &l);
 	whitespaces(st);
 	while (st->pos < st->end && st->buf[st->pos] == ',') {
+		o = id[l];
 		id[l] = 0;
 		if (n) {
 			printf(", %s", id);
 		} else {
 			printf(" %s", id);
 		}
+		id[l] = o;
 		n++;
 		if (st->nb_vars >= MAX_MEMBER) {
 			error("too many var", st);
 		}
-		st->vars[st->nb_vars] = id;
+		st->vars[st->nb_vars].name = id;
 		st->nb_vars++;
 		st->pos++;
 		whitespaces(st);
 		id = identifier(st, &l);
 	}
 	end_of_expr(st);
+	o = id[l];
 	id[l] = 0;
 	if (st->nb_vars >= MAX_MEMBER) {
 		error("too many var", st);
 	}
-	st->vars[st->nb_vars] = id;
+	st->vars[st->nb_vars].name = id;
 	st->nb_vars++;
 	if (n) {
 		printf(", %s;\n", id);
 	} else {
 		printf(" %s;\n", id);
 	}
+	id[l] = o;
 }
 
 void k_ref(struct trip *st)
@@ -1302,18 +2085,32 @@ void k_poke(struct trip *st)
 	char *id;
 	int l;
 	int o;
+	char *arr;
+
 	st->pos += 4;
 	whitespaces(st);
 	id = identifier(st, &l);
 	o = id[l];
 	id[l] = 0;
 	indent(st);
-	printf("((unsigned char*)%s)[", id);
+	if (st->mode == MODE_INTERP) {
+		arr = (char*)get_data(st, NULL, id, 0);
+	} else {
+		printf("((unsigned char*)%s)[", id);
+	}
 	id[l] = o;
 	expression(st);
-	printf("] = ");
+	if (st->mode == MODE_INTERP) {
+		arr = arr + pop(st);
+	} else {
+		printf("] = ");
+	}
 	expression(st);
-	printf(";\n");
+	if (st->mode == MODE_INTERP) {
+		arr[0] = pop(st);
+	} else {
+		printf(";\n");
+	}
 	end_of_expr(st);
 }
 
@@ -1322,15 +2119,25 @@ void k_peek(struct trip *st)
 	char *id;
 	int l;
 	int o;
+	char *arr;
+
 	st->pos += 4;
 	whitespaces(st);
 	id = identifier(st, &l);
 	o = id[l];
 	id[l] = 0;
-	printf("((unsigned char*)%s)[", id);
+	if (st->mode == MODE_INTERP) {
+		arr = (char*)get_data(st, NULL, id, 0);
+	} else {
+		printf("((unsigned char*)%s)[", id);
+	}
 	id[l] = o;
 	expression(st);
-	printf("]");
+	if (st->mode == MODE_INTERP) {
+		push(st, ((var)arr[pop(st)]) & 0xFF);
+	} else {
+		printf("]");
+	}
 	end_of_expr(st);
 }
 
@@ -1351,7 +2158,7 @@ void k_bytes(struct trip *st)
 	if (st->nb_global >= MAX_MEMBER) {
 		error("too many global", st);
 	}
-	st->global[st->nb_global] = id;
+	st->global[st->nb_global].name = id;
 	st->nb_global++;
 	
 	whitespaces(st);
@@ -1390,7 +2197,7 @@ void k_array(struct trip *st)
 	if (st->nb_global >= MAX_MEMBER) {
 		error("too many global", st);
 	}
-	st->global[st->nb_global] = id;
+	st->global[st->nb_global].name = id;
 	st->nb_global++;
 	
 	whitespaces(st);
@@ -1415,23 +2222,32 @@ void k_new(struct trip *st)
 {
 	char *id;
 	int l;
-	int o;
 	st->pos += 3;
 	whitespaces(st);
+	if (st->mode == MODE_INTERP) {
+	}
 	id = identifier(st, &l);
 	whitespaces(st);
-	o = id[l];
-	id[l] = 0;
-	if (!strcmp(id, "array")) {
-		id[l] = o;
-		printf("(var)malloc(sizeof(var) * %d)", num_lit(st));
-	} else if (!strcmp(id, "bytes")) {
-		id[l] = o;
-		printf("(var)malloc(%d)", num_lit(st));
+	if (!id_cmp(id, "array")) {
+		if (st->mode == MODE_INTERP) {
+			push(st, (var)malloc(sizeof(var) * num_lit(st)));
+		} else {
+			printf("(var)malloc(sizeof(var) * %d)", num_lit(st));
+		}
+	} else if (!id_cmp(id, "bytes")) {
+		if (st->mode == MODE_INTERP) {
+			push(st, (var)malloc(num_lit(st)));
+		} else {
+			printf("(var)malloc(%d)", num_lit(st));
+		}
 	} else {
-		printf("(var)malloc(sizeof(struct %s))", id);
+		if (st->mode == MODE_INTERP) {
+		printf("NEWWW\n");
+			push(st, (var)malloc(size_of(st, id)));
+		} else {
+			printf("(var)malloc(sizeof(struct %s))", id_tmp(st,id));
+		}
 	}
-	id[l] = o;
 	end_of_expr(st);
 }
 
@@ -1569,13 +2385,18 @@ void call(struct trip *st)
 {
 	char *p;
 	char *id;
-	char *meth;
+	char *meth = NULL;
 	char *clas;
 	int l;
 	int o;
 	int c;
 	int end;
+	int op;
 	int n = 0;
+	int func = 0;
+	var self = 0;
+
+	push_context(st);
 	whitespaces(st);
 	id = identifier(st, &l);
 	c = st->buf[st->pos];
@@ -1586,8 +2407,11 @@ void call(struct trip *st)
 	o = id[l];
 	id[l] = 0;
 	clas = NULL;
-	if (st->indent == 2) {
-		printf("\t");
+	if (st->mode == MODE_INTERP) {
+	} else {
+		if (st->indent == 2) {
+			printf("\t");
+		}
 	}
 	if (c == '.') {
 		st->pos++;
@@ -1597,16 +2421,34 @@ void call(struct trip *st)
 		o = meth[l];
 		meth[l] = 0;
 		clas = get_class(st, id);
-		if (clas == NULL) {
-			printf("((var(*)())%s__%s)(self", 
-					st->class_name, meth);
+		
+		if (st->mode == MODE_INTERP) {
+			printf("GET %s\n", id_tmp(st, meth));
+			if (clas == NULL) {
+				self = st->__self;
+				func = get_member_pos(st,	
+					st->class_name, "method", meth);
+			} else {
+				self = get_data(st, NULL, id, 0);
+				func = get_member_pos(st, clas, "method", meth);
+			}
 		} else {
-			printf("((var(*)())%s__%s)((var)%s", clas, meth, id);
+			if (clas == NULL) {
+				printf("((var(*)())%s__%s)(self", 
+					st->class_name, meth);
+			} else {
+				printf("((var(*)())%s__%s)((var)%s", 
+						clas, meth, id);
+			}
 		}
 		meth[l] = o;
 		n = 1;
 	} else {
-		printf("((var(*)())%s)(", id);
+		if (st->mode == MODE_INTERP) {
+			func = get_data(st, NULL, id, 0);
+		} else {
+			printf("((var(*)())%s)(", id);
+		}
 		id[l] = o;
 	}
 	end = 0;
@@ -1644,13 +2486,34 @@ void call(struct trip *st)
 		}
 	}
 	p = st->buf + st->pos;
-	//printf(" PPP %c\n", *p);
-	if (*p != '}') {
-		printf(");\n");
-	} else {
-		printf(")");
-	}
 	end_of_expr(st);
+	if (st->mode == MODE_INTERP) {
+		op = st->pos;
+		printf("ID %s %p ", id_tmp(st, id), st->__self);
+		printf("JMP TO %d %s \n", func, id_tmp(st,clas));
+		st->pos = func;
+		while (st->buf[st->pos] != '{') {
+			st->pos++;
+		}
+		st->pos++;
+		st->__self = self;
+		st->class_name = clas;
+		if (meth) {
+			st->func_name = meth;
+		} else {
+			st->func_name = id;
+		}
+		compound(st);
+		st->pos = op;
+	} else {
+		if (*p != '}') {
+			printf(");\n");
+		} else {
+			printf(")");
+		}
+	}
+	st->return_ = 0;
+	pop_context(st);
 }
 
 
@@ -1772,21 +2635,60 @@ void compound(struct trip *st)
 int main(int argc, char *argv[]) 
 {
 	struct trip *st;
-	if (argc > 1) {
-		printf("typedef long var;\n");
-		st = load(argv[1]);
+	var args[MAX_MEMBER+1];
+	var nb_args;
+
+	if (argc > 2) {
+		st = load(argv[2]);
+		if (!st) {
+			return -1;
+		}
+		switch (argv[1][1]) {
+		case 'c':
+			printf("typedef long var;\n");
+			st->mode = MODE_C;
+			declare(st);
+			break;
+		default:
+			st->mode = MODE_INTERP;
+			declare(st);
+		}
 		st->last = st;
 		st->func_name = NULL;
 		st->class_name = NULL;
+		st->ctx = NULL;
 		if (st) {
-			compound(st);
+			if (st->mode == MODE_C) {
+				compound(st);
+			}
 			if (st->func_name) {
-				printf("\treturn 0;\n}\n");
+				if (st->mode == MODE_C) {
+					printf("\treturn 0;\n}\n");
+				}
 			}
 			if (!st->main) {
-				printf("int main(int argc, char *argv[]) {\n");
-				printf("\treturn startup((var)argc,(var)argv);\n");
-				printf("}\n");
+				if (st->mode == MODE_C) {
+					printf("int main(int argc, char *argv[]) {\n");
+					printf("\treturn startup((var)argc,(var)argv);\n");
+					printf("}\n");
+				}
+			}
+			if (st->mode == MODE_INTERP) {
+				nb_args = 0;
+				st->pos = 0;
+				while (nb_args < (argc - 2)) {
+					args[nb_args] = (var)argv[nb_args+2];
+					nb_args++;
+				}
+				st->vars[0].name = "argc";
+				st->vars[0].value = NULL;
+				st->vars[0].data = nb_args;
+				st->vars[1].name = "argv";
+				st->vars[1].value = NULL;
+				st->vars[1].data = (var)args;
+				st->nb_vars = 2;
+				st->line = 1;
+				return (int)run(st, NULL, "startup");
 			}
 			trip__delete(st);
 		}

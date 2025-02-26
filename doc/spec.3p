@@ -15,6 +15,7 @@ bytes array_of_bytes {
 
 
 class my_struct {
+field zreo
 field one
 field next
 field three
@@ -22,6 +23,7 @@ field four
 
 # args[0]: this
 method init () {
+	print "ENTER INIT\n"
 	set one 1
 	set next null
 	set three 3
@@ -86,6 +88,9 @@ func startup (argc, argv) {
 	var x, str, a, b, f
 	ref my_struct s
 
+	print argv[0]
+	print argv[1]
+
 	set x MY_CONST
 	set str "A string litteral \
 		multi-line\n"
@@ -94,11 +99,14 @@ func startup (argc, argv) {
 
 	set s {new my_struct} # alloc a class
 	s.init
+	
+
 
 	print str
 
 	set a[x] 25
 	set a[0] a[x]
+	set a[1] 1 + 2 - 3
 	set a[1] 1 + 2 - (-3 * 4) / 5 % 6
 
 	poke b 0 'A' 			# ascii 'A'
@@ -107,7 +115,9 @@ func startup (argc, argv) {
 	print b     			# print AC
 
 	hello_world
+	print "__________________ JHGJHGGJH\n"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
+	print "JHGJHGGJH\n"
 	f null			# indirect call of method with dummy "this"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
@@ -136,8 +146,8 @@ func startup (argc, argv) {
 		set x x - 1
 	};
 
-	s.do_something 7
-	s.dispose
+#	s.do_something 7
+#	s.dispose
 
 	print "\n program "
 	print argv[0]
