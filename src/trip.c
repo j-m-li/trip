@@ -125,6 +125,8 @@ void spaces(struct trip *st);
 int expression(struct trip *st);
 var run(struct trip *st, char *class_, char *name);
 void k_func(struct trip *st);
+void k_array(struct trip *st);
+void k_bytes(struct trip *st);
 void k_method(struct trip *st);
 void k_define(struct trip *st);
 char *identifier(struct trip *st, int *l);
@@ -432,9 +434,6 @@ int string_len(char *b)
 	int i;
 	i = 1;
 	while (b[i] != e) {
-		if (b[i] == '\\') {
-			i++;
-		}
 		if (i > 1020) {
 			printf("#error string too long\n");
 		}
@@ -448,6 +447,9 @@ int id_cmp(char *a, char *b)
 {
 	int i;
 	i = 0;
+	if (!a || !b) {
+		return 1;
+	}
 	while ((b[i] >= 'a' && b[i] <= 'z') ||
 		(b[i] >= 'A' && b[i] <= 'Z') ||
 		(b[i] == '_') ||
@@ -594,6 +596,10 @@ void declare(struct trip *st)
 			declare_func(st, id);
 		} else if (is(st, p, "define")) {
 			k_define(st);
+		} else if (is(st, p, "array")) {
+			k_array(st);
+		} else if (is(st, p, "bytes")) {
+			k_bytes(st);
 		} else if (is(st, p, "method")) {
 			st->pos += 6;
 			whitespaces(st);
@@ -601,9 +607,6 @@ void declare(struct trip *st)
 			declare_method(st, cid, id);
 		} else {
 			while (*p != '\n') {
-				if (*p == '\\' && p[1] == '\n') {
-					st->pos++;
-				}
 				st->pos++;
 				p = st->buf + st->pos;
 			}
@@ -659,8 +662,10 @@ var push_context(struct trip *st)
 	}
 	ctx->nb_vars = st->nb_vars;
 	ctx->vars = save_cells(st->nb_vars, st->vars);
+	st->nb_vars = 0;
 	ctx->nb_refs = st->nb_refs;
 	ctx->refs = save_cells(st->nb_refs, st->refs);
+	st->nb_refs = 0;
 	return 0;
 }
 
@@ -789,9 +794,6 @@ var run(struct trip *st, char *class_, char *name)
 	
 		} else {
 			while (*p != '\n') {
-				if (*p == '\\' && p[1] == '\n') {
-					st->pos++;
-				}
 				st->pos++;
 				p = st->buf + st->pos;
 			}
@@ -849,22 +851,7 @@ int num_lit(struct trip *st)
 	p = b;
 	if (p[0] == '\'') {
 		p++;
-		if (p[0] == '\\') {
-			p++;
-			switch(*p) {
-			case 'n': r = '\n'; break;
-			case 'r': r = '\r'; break;
-			case 't': r = '\t'; break;
-			case 'v': r = '\v'; break;
-			case 'b': r = '\b'; break;
-			case 'f': r = '\f'; break;
-			case 'a': r = '\a'; break;
-			default:
-				r = *p;
-			}
-		} else {
-			r = *p;
-		}
+		r = *p;
 		p++;
 		if (*p != '\'') {
 			error("in char constant", st);
@@ -973,9 +960,6 @@ int get_member_pos(struct trip *st, char *clas, char *type, char *name)
 			break;
 		} else {
 			while (*p != '\n') {
-				if (*p == '\\' && p[1] == '\n') {
-					st->pos++;
-				}
 				st->pos++;
 				p = st->buf + st->pos;
 			}
@@ -1016,9 +1000,6 @@ int size_of(struct trip *st, char *name)
 			break;
 		} else {
 			while (*p != '\n') {
-				if (*p == '\\' && p[1] == '\n') {
-					st->pos++;
-				}
 				st->pos++;
 				p = st->buf + st->pos;
 			}
@@ -1240,12 +1221,12 @@ int operator(struct trip *st)
 	tmp[0] = *p;
 	switch (*p) {
 	case '<':
-		if (p[1] == '>' || p[1] == '=') {
+		if (p[1] == '>' || p[1] == '~') {
 			p++;
 		}
 		break;
 	case '>':
-		if (p[1] == '=') {
+		if (p[1] == '~') {
 			p++;
 		}
 		break;
@@ -1263,7 +1244,7 @@ char *str_lit(struct trip *st)
 	char *end = st->buf + st->end;
 	char *p = b;
 	int l;
-	if (*p == '\'') {
+	if (*p == '`') {
 		/* already expanded */
 		while (*p) {
 			p++;
@@ -1274,44 +1255,61 @@ char *str_lit(struct trip *st)
 	if (*p != '"') {
 		return NULL;
 	}
-	*p = '\'';
+	*p = '`';
 	p++;
 	l = 1;
 	while (p < end && *p && *p != '"') {
-		if (*p == '\\') {
-			b[l] = *p;
-			switch (p[1]) {
-			case '\r':
+		if (*p == '=' && (p[1] == '\n' || p[1] == '\r')) {
+			p++;
+			if (*p == '\r') {
 				p++;
-			case '\n':
-				p++;
-				l--;
-				break;
-			case '\\':
-				if (st->mode == MODE_INTERP) {
-					b[l] = '\\'; p++;
+			}
+		} else if (*p == '=') {
+			p++;
+			if (*p >= '0' && *p <= '9') {
+				b[l] = (*p - '0') << 4;
+			} else {
+				b[l] = (*p - 'A' + 10) << 4;
+			}
+			p++;
+			if (*p >= '0' && *p <= '9') {
+				b[l] |= *p - '0';
+			} else {
+				b[l] |= *p - 'A' + 10;
+			}
+			if (st->mode == MODE_INTERP) {
+			} else {
+				switch (b[l]) {
+				case '\n':
+					b[l] = '\\';
+					l++;
+					b[l] = 'n';
+					break;
+				case '\r':
+					b[l] = '\\';
+					l++;
+					b[l] = 'r';
+					break;
+				case '\\':
+					b[l] = '\\';
+					l++;
+					b[l] = '\\';
+					break;
+				case '"':
+					b[l] = '\\';
+					l++;
+					b[l] = '"';
+					break;
 				}
-				break;
-			case '0':
-				if (st->mode == MODE_INTERP) {
-					b[l] = '\0'; p++;
-				}
-				break;
-			case 't':
-				if (st->mode == MODE_INTERP) {
-					b[l] = '\t'; p++;
-				}
-				break;
-			case 'n':
-				if (st->mode == MODE_INTERP) {
-					b[l] = '\n'; p++;
-				}
-				break;
-			default:
 			}
 			l++;
 		} else {
 			b[l] = *p;
+			switch (b[l]) {
+			case '\\':
+				error("'\\' in string", st);
+				break;
+			}
 			l++;
 		}
 		p++;
@@ -1379,26 +1377,6 @@ int expression1(struct trip *st, int prec, int spc)
 			break;
 		case '\n':
 			ok = 1;
-			break;
-		case '\\':
-			c = st->buf[st->pos + 1];
-			if (c == '\r') {
-				st->pos++;
-				c = st->buf[st->pos + 1];
-			}
-			if (c == '\n') {
-				st->line++;
-				st->pos++;
-				st->pos++;
-				c = st->buf[st->pos];
-				while (c == ' ' || c == '\t') {
-					st->pos++;
-					c = st->buf[st->pos];
-				}
-			} else {
-				printf("\\"); 
-				st->pos++;
-			}
 			break;
 		case '#':
 		case '}':
@@ -1532,6 +1510,7 @@ int expression1(struct trip *st, int prec, int spc)
 			spaces(st);
 			break;
 		case '"':
+		case '`':
 			id = str_lit(st);
 			if (st->mode == MODE_INTERP) {
 				push(st, (var)id);
@@ -1664,7 +1643,7 @@ int conditional(struct trip *st, int is_while)
 			if (c == '>') {
 				printf("%s (__cond != 0) ", f);
 				st->pos++;
-			} else if (c == '=') {
+			} else if (c == '~') {
 				printf("%s (__cond <= 0) ", f);
 				st->pos++;
 			} else {
@@ -1681,7 +1660,7 @@ int conditional(struct trip *st, int is_while)
 			}
 			st->pos++;
 			c = st->buf[st->pos];
-			if (c == '=') {
+			if (c == '~') {
 				st->pos++;
 				printf("%s (__cond >= 0) ", f);
 			} else {
@@ -1690,7 +1669,7 @@ int conditional(struct trip *st, int is_while)
 			condbody(st);
 			n = 1;
 			break;
-		case '=':
+		case '~':
 			if (n) {
 				printf(" else ");
 			} else {
@@ -2222,29 +2201,56 @@ void k_array(struct trip *st)
 	char *id;
 	int l;
 	int op;
+	int old;
+	int n;
+	var *arr;
 	st->pos += 5;
 	whitespaces(st);
+	if (st->mode == MODE_INTERP) {
+		printf("AAAAAAAAAA\n");
+	}
 	id = identifier(st, &l);
 	whitespaces(st);
 	if (operator(st) != '{') {
 		error("{ expected", st);
 	}
-	id[l] = 0;
-	printf("var %s[] = {\n", id);
 	if (st->nb_global >= MAX_MEMBER) {
 		error("too many global", st);
 	}
 	st->global[st->nb_global].name = id;
-	st->nb_global++;
 	
 	whitespaces(st);
+	old = st->pos;
+	if (st->mode == MODE_INTERP) {
+		n = 1;
+		while (st->pos < st->end && st->buf[st->pos] != '}') {
+			if (st->buf[st->pos] == ',') {
+				n++;
+			}	
+			st->pos++;
+		}
+		arr = malloc(sizeof(var) * n);
+		st->global[st->nb_global].data = (var)arr;
+	} else {
+		printf("var %s[] = {\n", id_tmp(st, id));
+	}
+	n = 0;
+	st->pos = old;
 	while (st->pos < st->end && st->buf[st->pos] != '}') {
-		printf("%d", num_lit(st));
+		if (st->mode == MODE_INTERP) {
+			arr[n] = num_lit(st);
+		} else {
+			printf("%d", num_lit(st));
+		}
+		n++;
 		whitespaces(st);
 		op = operator(st);
 		whitespaces(st);
 		if (op == ',') {
-			printf(",");
+			if (st->mode == MODE_INTERP) {
+			} else {
+				printf(",");
+			}
 		} else if (op == '}') {
 			break;
 		} else {
@@ -2252,7 +2258,11 @@ void k_array(struct trip *st)
 
 		}
 	}
-	printf("};\n");
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("};\n");
+	}
+	st->nb_global++;
 }
 
 void k_new(struct trip *st)
@@ -2279,7 +2289,6 @@ void k_new(struct trip *st)
 		}
 	} else {
 		if (st->mode == MODE_INTERP) {
-		printf("NEWWW\n");
 			push(st, (var)malloc(size_of(st, id)));
 		} else {
 			printf("(var)malloc(sizeof(struct %s))", id_tmp(st,id));
@@ -2439,15 +2448,19 @@ void call(struct trip *st)
 	char *meth = NULL;
 	char *clas;
 	int l;
-	int o;
 	int c;
 	int end;
 	int op;
 	int n = 0;
 	int func = 0;
 	var self = 0;
+	int sp;
+	int vr;
 
-	push_context(st);
+	if (st->mode == MODE_INTERP) {
+		push_context(st);
+	} else {
+	}
 	whitespaces(st);
 	id = identifier(st, &l);
 	c = st->buf[st->pos];
@@ -2455,8 +2468,6 @@ void call(struct trip *st)
 		error("identifier expected..", st);
 		return;
 	}
-	o = id[l];
-	id[l] = 0;
 	clas = NULL;
 	if (st->mode == MODE_INTERP) {
 	} else {
@@ -2469,8 +2480,6 @@ void call(struct trip *st)
 		whitespaces(st);
 		meth = identifier(st, &l);
 		c = st->buf[st->pos];
-		o = meth[l];
-		meth[l] = 0;
 		clas = get_class(st, id);
 		
 		if (st->mode == MODE_INTERP) {
@@ -2484,24 +2493,25 @@ void call(struct trip *st)
 			}
 		} else {
 			if (clas == NULL) {
-				printf("((var(*)())%s__%s)(self", 
-					st->class_name, meth);
+				printf("((var(*)())%s", 
+						id_tmp(st,st->class_name));
+				printf("__%s)(self", id_tmp(st,meth));
 			} else {
-				printf("((var(*)())%s__%s)((var)%s", 
-						clas, meth, id);
+				printf("((var(*)())%s", id_tmp(st,clas));
+				printf("__%s", id_tmp(st,meth));
+				printf(")((var)%s", id_tmp(st,id));
 			}
 		}
-		meth[l] = o;
 		n = 1;
 	} else {
 		if (st->mode == MODE_INTERP) {
 			func = get_data(st, NULL, id, 0);
 		} else {
-			printf("((var(*)())%s)(", id);
+			printf("((var(*)())%s)(", id_tmp(st,id));
 		}
-		id[l] = o;
 	}
 	end = 0;
+	sp = st->sp;
 	while (st->pos < st->end && !end) {
 		p = st->buf + st->pos;
 		switch (*p) {
@@ -2534,13 +2544,23 @@ void call(struct trip *st)
 		default:
 			expression(st);
 		}
+		if (st->mode == MODE_INTERP) {
+			if (sp != st->sp) {
+				st->vars[st->nb_vars].name = "";
+				st->vars[st->nb_vars].data = pop(st);
+				st->nb_vars++;
+			}
+		} else {
+		}
 	}
 	p = st->buf + st->pos;
 	end_of_expr(st);
 	if (st->mode == MODE_INTERP) {
+		vr = 0;
 		op = st->pos;
 		st->pos = func;
 		while (st->buf[st->pos] != '{') {
+			printf("%c", st->buf[st->pos]);
 			st->pos++;
 		}
 		st->pos++;
@@ -2561,9 +2581,19 @@ void call(struct trip *st)
 		}
 	}
 	st->return_ = 0;
-	pop_context(st);
+	if (st->mode == MODE_INTERP) {
+		pop_context(st);
+	} else {
+	}
 }
 
+void skip_body(struct trip *st)
+{
+	while (st->pos < st->end && st->buf[st->pos] != '}') {
+		st->pos++;
+	}
+	st->pos++;		
+}
 
 void compound(struct trip *st)
 {
@@ -2580,12 +2610,12 @@ void compound(struct trip *st)
 			return;
 		case 'a':
 			if (is(st, p, "array")) {
-				k_array(st);
+				skip_body(st);
 			}
 			break;
 		case 'b':
 			if (is(st, p, "bytes")) {
-				k_bytes(st);
+				skip_body(st);
 			} else if (is(st, p, "break")) {
 				k_break(st);
 			}

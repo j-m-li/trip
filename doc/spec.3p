@@ -42,21 +42,21 @@ method print_this () {
 method do_something (inc) {
 	var s;
 	set next next + inc
-	print "\n";
+	print "=0A";
 	print10 next
-	print "\n";
+	print "=0A";
 	this.print_this
 
 	set s {file_size "README.md"}
-	print "\n";
+	print "=0A";
 	print10 s
-	print "\n";
+	print "=0A";
 	print10 {file_size "README.md"}
-	print "\n";
+	print "=0A";
 	print four
 	print " "
 	print10 {str_cmp four "four! "}
-	print "\n";
+	print "=0A";
 	print {file_load "README.md" 0 {file_size "README.md"}}
 	file_save "bin/test.txt" 0 5 "hello"
 	file_save "bin/test.txt" 7 1 "!"
@@ -73,7 +73,7 @@ method do_something (inc) {
 method call_hello() {
 	print "This should be 0: "
 	print10 this
-	print "\n"
+	print "=0A"
 	hello_world
 }
 
@@ -90,8 +90,11 @@ func startup (argc, argv) {
 	print argv[1]
 
 	set x MY_CONST
-	set str "A string litteral \
-		multi-line\n"
+
+	set str "A string litteral =
+YO =
+multi-line=0A"
+
 	set a {new array 10} # alloc an array of 10 words
 	set b {new bytes 3} # alloc 3 bytes
 
@@ -111,9 +114,9 @@ func startup (argc, argv) {
 	print b     			# print AC
 
 	hello_world
-	print "__________________ JHGJHGGJH\n"
+	print "__________________ JHGJHGGJH=0A"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
-	print "JHGJHGGJH\n"
+	print "JHGJHGGJH=0A"
 	f null			# indirect call of method with dummy "this"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
@@ -121,40 +124,40 @@ func startup (argc, argv) {
 	if x - 5 ?
 		> {print "x greater than 5"},
 		< {print "x less than 5"},
-		= {print "x equal 5"};
+		~ {print "x equal 5"};
 
-	print "\n"
+	print "=0A"
 	if x ?
-		1 {print "x = 1"},
-		2 {print "x = 2"},
-		-20 {print "x = -20"},
-		'A' {print "x = A"},
+		1 {print "x =3D 1"},
+		2 {print "x =3D 2"},
+		-20 {print "x =3D -20"},
+		'A' {print "x =3D A"},
 		<> {print "x not equal zero"},
-		>= {print "x greater or equal zero"},
-		<= {print "x less than or equal zero"}
+		>~ {print "x greater or equal zero"},
+		<~ {print "x less than or equal zero"}
 	;
-	print "\n"
+	print "=0A"
 	while x ? > { 	# loop while x greater than 0
 		print10 x
-		if x - 2 ? <= continue; # skip and loop if x is less than 3
+		if x - 2 ? <~ continue; # skip and loop if x is less than 3
 		if x - 4 ? < break;	# stop loop if x is less than 4
-		print "\n"
+		print "=0A"
 		set x x - 1
 	};
 
 	s.do_something 7
 	s.dispose
 
-	print "\n program "
+	print "=0A program "
 	print argv[0]
-	print " is terminated\n"
+	print " is terminated=0A"
 
 	return 0
 }
 
 
 func hello_world () {
-	print "Hello World!\n"
+	print "Hello World!=0A"
 }
 
 func ret_ten () {
