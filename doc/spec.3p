@@ -92,14 +92,16 @@ func startup (argc, argv) {
 	set x MY_CONST
 
 	set str "A string litteral =
-YO =
+YO=0A =
 multi-line=0A"
 
 	set a {new array 10} # alloc an array of 10 words
 	set b {new bytes 3} # alloc 3 bytes
-
+ 
 	set s {new my_struct} # alloc a class
+	print "BOB=0A"
 	s.init
+	print "TOB=0A"
 
 	print str
 
@@ -114,10 +116,10 @@ multi-line=0A"
 	print b     			# print AC
 
 	hello_world
-	print "__________________ JHGJHGGJH=0A"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
-	print "JHGJHGGJH=0A"
+	print "__________________ JHGJHGGJH=0A"
 	f null			# indirect call of method with dummy "this"
+	print "JHGJHGGJH=0A"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
 
