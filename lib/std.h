@@ -2,6 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+var print10(var n)
+{
+	printf("%ld", n);
+	return 0;
+
+}
+var print(var txt)
+{
+	printf("%s", (char*)txt);
+	return 0;
+}
+
 var file_size(var path)
 {
 	FILE *fp;
@@ -66,4 +78,5 @@ var str_dup(var a)
 {
 	return (var)strdup((void*)a);
 }
+
 

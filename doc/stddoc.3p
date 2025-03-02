@@ -9,11 +9,34 @@ func int(n)
 	print10 n
 }
 
+func escape(txt)
+{
+	echo txt	
+}
+
+func begin_document()
+{
+	echo "<!DOCTYPE html>
+<html lang=3D=22en=22>
+<head>
+<meta charset=3D=22UTF-8=22>
+<meta name=3D=22viewport=22 content=3D=22width=3Ddevice-width, initial-scale=3D1.0=22>
+";
+}
+
+func end_document()
+{
+	echo "</body>"
+	echo "</html>=0A"
+}
+
 func title(tt)
 {
 	echo "<title>"
-	echo tt
+	escape tt
 	echo "</title>=0A"
+	echo "</head>"
+	echo "<body>=0A"
 }
 
 
@@ -27,7 +50,7 @@ func head(n, t)
 	echo "<h"
 	int n 
 	echo ">"
-	echo t
+	escape t
 	echo "</h"
 	int n 
 	echo ">=0A"
@@ -36,13 +59,13 @@ func head(n, t)
 func par(t)
 {
 	echo "<p>"
-	echo t
+	escape t
 	echo "</p>=0A"
 }
 
 func txt(t)
 {
-	echo t
+	escape t
 	echo "=0A"
 }
 

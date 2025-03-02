@@ -37,6 +37,8 @@
 
 #define var long
 
+#include "../lib/std.h"
+
 #define MAX_MEMBER 127
 #define MODE_C 0
 #define MODE_INTERP 1
@@ -95,6 +97,7 @@ struct trip {
 	int depth;
 	int line;
 	int indent;
+	int incall;
 	int replaced;
 	struct cell vars[MAX_MEMBER+1];
 	int nb_vars;
@@ -146,49 +149,6 @@ int id_cmp(char *a, char *b);
 char *id_dup(char *a);
 void call_exec(struct trip *st, char *func, char *id, var self, char *clas, char *meth);
 var get_data(struct trip *st, char *is_self, char *name, int return_addr);
-
-int file_size(char *path)
-{
-	FILE *fp;
-	int si;
-	fp = fopen(path, "rb");
-	if (!fp) {
-		return 0;
-	}
-	fseek(fp, 0, SEEK_END);
-	si = ftell(fp);
-	fclose(fp);
-	return si;
-}
-
-var file_save(char *path, var offset, var size, char *buf)
-{
-	return 0;
-}
-
-char *file_load(char *path, var offset, var size)
-{
-	char *buf;
-	FILE *fp;
-	int ret;
-
-	fp = fopen(path, "rb");
-	if (!fp) {
-		return 0;
-	}
-	buf = malloc(size+1);
-	if (!buf) {
-		return 0;
-	}
-	ret = fread(buf, 1, size, fp);
-	if (ret != size) {
-		free(buf);
-		buf = 0;
-	}
-	buf[size] = '\0';
-	fclose(fp);
-	return buf;
-}
 
 int error(char *txt, struct trip *st)
 {
@@ -311,10 +271,6 @@ void indent(struct trip *st)
 		}
 		return;
 	}
-	st->indent = 0;
-	st->func_name = "main";
-	printf("int main(int argc, char *argv[]) {\n");
-	st->main = 1;
 }
 
 
@@ -769,6 +725,7 @@ struct trip *trip__new()
 	st->state = 0;
 	st->pos = 0;
 	st->indent = 0;
+	st->incall = 0;
 	st->parent = 0;
 	st->next = 0;
 	st->last = 0;
@@ -1464,7 +1421,9 @@ int expression1(struct trip *st, int prec, int spc)
 			break;
 		case '{':
 			st->pos++;
+			st->incall++;
 			compound(st);
+			st->incall--;
 			if (st->mode == MODE_INTERP) {
 
 			} else {
@@ -1966,51 +1925,6 @@ void k_method(struct trip *st)
 	
 }
 
-void k_print(struct trip *st)
-{
-	char *s;
-	int sp;
-	st->pos += 5;
-	whitespaces(st);
-	s = str_lit(st);
-	indent(st);
-	if (s) {
-		end_of_expr(st);
-		if (st->mode == MODE_INTERP) {
-			printf("%s",s);
-		} else {
-			printf("printf(\"%%s\",\"%s\");\n", s);
-		}
-	} else {
-		if (st->mode == MODE_INTERP) {
-			sp = st->sp;
-			expression(st);
-			printf("%s",(char*)pop(st));
-		} else {
-			printf("printf(\"%%s\",(char*)(");
-			expression(st);
-			printf("));\n");
-		}
-		end_of_expr(st);
-	}
-}
-
-void k_print10(struct trip *st)
-{
-	st->pos += 7;
-	whitespaces(st);
-	indent(st);
-	if (st->mode == MODE_INTERP) {
-		expression(st);
-		printf("%ld", pop(st));
-	} else {
-		printf("printf(\"%%ld\",(long)(");
-		expression(st);
-		printf("));\n");
-	}
-	end_of_expr(st);
-}
-
 void k_field(struct trip *st)
 {
 	char *id;
@@ -2506,11 +2420,11 @@ void k_load(struct trip *st, char *s)
 	obuf = st->buf;
 	oend = st->end;
 	st->pos = 0;
-	st->end = file_size(buf);
+	st->end = file_size((var)buf);
 	if (st->end < 1 || st->nb_files >= MAX_MEMBER) {
 		error("caonot open file", st);
 	}
-	st->buf = file_load(buf, 0, st->end);
+	st->buf = (char*)file_load((var)buf, 0, st->end);
 	if (st->nb_files < 1) {
 		st->files[st->nb_files].start = 0; 
 	} else {
@@ -2573,6 +2487,15 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 			return (var(*)())file_save;
 		}
 		break;
+	case 'p':
+		if (!id_cmp(id, "print")) {
+			*argc = 1;
+			return (var(*)())print;
+		} else if (!id_cmp(id, "print10")) {
+			*argc = 1;
+			return (var(*)())print10;
+		}
+
 	case 's':
 		if (!id_cmp(id, "str_cmp")) {
 			*argc = 2;
@@ -2589,51 +2512,50 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 
 void call_builtin(struct trip *st, var(*built)())
 {
-			switch (st->nb_vars) {
-			case 1:
-				st->return_val = built(st->vars[0].data);
-				break;
-			case 2:
-				st->return_val = built(st->vars[0].data,
-					st->vars[1].data);
-				break;
-			case 3:
-				st->return_val = built(st->vars[0].data,
+	switch (st->nb_vars) {
+	case 1:
+		st->return_val = built(st->vars[0].data);
+		break;
+	case 2:
+		st->return_val = built(st->vars[0].data, st->vars[1].data);
+		break;
+	case 3:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data);
-				break;
-			case 4:
-				st->return_val = built(st->vars[0].data,
+		break;
+	case 4:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data);
-				break;		
-			case 5:
-				st->return_val = built(st->vars[0].data,
+		break;		
+	case 5:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data,
 					st->vars[4].data);
-				break;
-			case 6:
-				st->return_val = built(st->vars[0].data,
+		break;
+	case 6:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data,
 					st->vars[4].data,
 					st->vars[5].data);
-				break;
-			case 7:
-				st->return_val = built(st->vars[0].data,
+		break;
+	case 7:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data,
 					st->vars[4].data,
 					st->vars[5].data,
 					st->vars[6].data);
-				break;
-			case 8:
-				st->return_val = built(st->vars[0].data,
+		break;
+	case 8:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data,
@@ -2641,9 +2563,9 @@ void call_builtin(struct trip *st, var(*built)())
 					st->vars[5].data,
 					st->vars[6].data,
 					st->vars[7].data);
-				break;
-			case 9:
-				st->return_val = built(st->vars[0].data,
+		break;
+	case 9:
+		st->return_val = built(st->vars[0].data,
 					st->vars[1].data,
 					st->vars[2].data,
 					st->vars[3].data,
@@ -2652,10 +2574,10 @@ void call_builtin(struct trip *st, var(*built)())
 					st->vars[6].data,
 					st->vars[7].data,
 					st->vars[9].data);
-				break;
-			default:
-				st->return_val = built();
-			}
+		break;
+	default:
+		st->return_val = built();
+	}
 }
 
 void call_exec(struct trip *st, char *func, char *id, var self, char *clas, char *meth)
@@ -2666,58 +2588,57 @@ void call_exec(struct trip *st, char *func, char *id, var self, char *clas, char
 	char *obuf;
 	int vr;
 	char *p;
-			vr = 0;
-			opos = st->pos;
-			obuf = st->buf;
+	vr = 0;
+	opos = st->pos;
+	obuf = st->buf;
 
-			fix_pos_buf(st,func);
-			whitespaces(st);
-			p = st->buf + st->pos;
-			if (*p != '(') {
-				error("invalid function call", st);
-			}
+	fix_pos_buf(st,func);
+	whitespaces(st);
+	p = st->buf + st->pos;
+	if (*p != '(') {
+		error("invalid function call", st);
+	}
+	st->pos++;
+	end = 0;
+	while (st->pos < st->end && !end) {
+		whitespaces(st);
+		p = st->buf + st->pos;
+		switch (*p) {
+		case ',':
 			st->pos++;
-			end = 0;
-			while (st->pos < st->end && !end) {
-				whitespaces(st);
-				p = st->buf + st->pos;
-				switch (*p) {
-				case ',':
-					st->pos++;
-					break;
-				case ')':
-					st->pos++;
-					end = 1;
-					break;
-				default:
-					id = identifier(st, &l);
-					if (!id) {
-						error("param expected", st);
-					} else if (vr >= st->nb_vars) {
-						error("not enough arguments", st);
-					}
-					st->vars[vr].name = id;
-					vr++;
-				}
-			}
-			whitespaces(st);
-			if (st->buf[st->pos] != '{') {
-				error("invalid function body call", st);
-			} else if (vr < st->nb_vars) {
-				error("too many arguments", st);
-			}
+			break;
+		case ')':
 			st->pos++;
-			st->__self = self;
-			st->class_name = clas;
-			if (meth) {
-				st->func_name = meth;
-			} else {
-				st->func_name = id;
+			end = 1;
+			break;
+		default:
+			id = identifier(st, &l);
+			if (!id) {
+				error("param expected", st);
+			} else if (vr >= st->nb_vars) {
+				error("not enough arguments", st);
 			}
-			compound(st);
-			st->pos = opos;
-			st->buf = obuf;
-
+			st->vars[vr].name = id;
+			vr++;
+		}
+	}
+	whitespaces(st);
+	if (st->buf[st->pos] != '{') {
+		error("invalid function body call", st);
+	} else if (vr < st->nb_vars) {
+		error("too many arguments", st);
+	}
+	st->pos++;
+	st->__self = self;
+	st->class_name = clas;
+	if (meth) {
+		st->func_name = meth;
+	} else {
+		st->func_name = id;
+	}
+	compound(st);
+	st->pos = opos;
+	st->buf = obuf;
 }
 
 void call(struct trip *st)
@@ -2794,8 +2715,8 @@ void call(struct trip *st)
 	while (st->pos < st->end && !end) {
 		p = st->buf + st->pos;
 		switch (*p) {
-		case '}':
 		case '\r':
+		case '}':
 		case '\n':
 		case ';':
 		case '#':
@@ -2803,10 +2724,16 @@ void call(struct trip *st)
 			break;
 		case '{':
 			if (n > 0) {
-				printf(", ");
+				if (st->mode == MODE_INTERP) {
+				} else {
+					printf(", ");
+				}
 			}
 			st->pos++;
+			st->indent = 0;
+			st->incall++;
 			compound(st);
+			st->incall--;
 			p = st->buf + st->pos;
 			if (*p != '}') {
 				error("} !", st);
@@ -2817,13 +2744,18 @@ void call(struct trip *st)
 		case ' ':
 		case '\t':
 			if (n > 0 && !is_eol(st)) {
-				printf(", ");
+				if (st->mode == MODE_INTERP) {
+				} else {
+					printf(", ");
+				}
 			}
 			n++;
 		default:
 			expression(st);
 		}
 	}
+
+	p = st->buf + st->pos;
 
 	if (st->mode == MODE_INTERP) {
 		push_context(st);
@@ -2837,7 +2769,6 @@ void call(struct trip *st)
 	} else {
 	}
 
-	p = st->buf + st->pos;
 	end_of_expr(st);
 	if (st->mode == MODE_INTERP) {
 		if (built) {
@@ -2849,7 +2780,7 @@ void call(struct trip *st)
 			call_exec(st, func, id, self, clas, meth);
 		}
 	} else {
-		if (*p != '}') {
+		if (/**p != '}' ||  */st->incall == 0) {
 			printf(");\n");
 		} else {
 			printf(")");
@@ -2935,11 +2866,7 @@ void compound(struct trip *st)
 			}
 			break;
 		case 'p':
-			if (is(st, p, "print10")) {
-				k_print10(st);
-			} else if (is(st, p, "print")) {
-				k_print(st);
-			} else if (is(st, p, "peek")) {
+			if (is(st, p, "peek")) {
 				k_peek(st);
 			} else if (is(st, p, "poke")) {
 				k_poke(st);
@@ -2975,6 +2902,16 @@ void compound(struct trip *st)
 			break;
 		}
 		if (l == st->pos) {
+			if (!st->main && !st->class_name && !st->func_name) {
+				st->indent = 1;
+				st->func_name = "main";
+				if (st->mode == MODE_INTERP) {
+				} else {
+					printf("int main(int argc,"
+						 " char *argv[]) {\n");
+				}
+				st->main = 1;
+			}
 			call(st);
 			push(st, st->return_val);
 			if (l == st->pos) {
