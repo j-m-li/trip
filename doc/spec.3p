@@ -66,7 +66,10 @@ method do_something (inc) {
 	delete s
 	print array_of_bytes
 	print10 array_of_integer[1]
+	print "BBBBBB=0A";
 	print_hi
+	print "--------BBBBBB=0A";
+
 	return one
 }
 
@@ -99,9 +102,7 @@ multi-line=0A"
 	set b {new bytes 3} # alloc 3 bytes
  
 	set s {new my_struct} # alloc a class
-	print "BOB=0A"
 	s.init
-	print "TOB=0A"
 
 	print str
 
@@ -115,10 +116,12 @@ multi-line=0A"
 	poke b 2 0			# nil: end of string
 	print b     			# print AC
 
+	print "BOB=0A"
 	hello_world
+	print "TOB=0A"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
 	print "__________________ JHGJHGGJH=0A"
-	f null			# indirect call of method with dummy "this"
+	f 			# indirect call of method with NULL "this"
 	print "JHGJHGGJH=0A"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value

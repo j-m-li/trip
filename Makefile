@@ -9,6 +9,7 @@ all: bin
 	./bin/spec
 	#gdb --args ./bin/trip -s doc/spec.3p HELLO World
 	./bin/trip -s doc/spec.3p HELLO World
+	./bin/trip -s doc/html_sample.3p 
 
 bin:
 	mkdir -p bin

@@ -1,0 +1,53 @@
+
+func echo(to)
+{
+	print to
+}
+
+func int(n)
+{
+	print10 n
+}
+
+func title(tt)
+{
+	echo "<title>"
+	echo tt
+	echo "</title>=0A"
+}
+
+
+func page_break()
+{
+	echo "=0A<hr/>=0A"
+}
+
+func head(n, t)
+{
+	echo "<h"
+	int n 
+	echo ">"
+	echo t
+	echo "</h"
+	int n 
+	echo ">=0A"
+}
+
+func par(t)
+{
+	echo "<p>"
+	echo t
+	echo "</p>=0A"
+}
+
+func txt(t)
+{
+	echo t
+	echo "=0A"
+}
+
+func nl(t)
+{
+	echo "<br>"
+	txt t
+}
