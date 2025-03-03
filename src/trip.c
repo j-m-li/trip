@@ -57,7 +57,7 @@ struct class_cell {
 	char *name;
 	char *value;
 	var data;
-	struct cell mehtods[MAX_MEMBER+1];
+	struct cell methods[MAX_MEMBER+1];
 	int nb_methods;
 };
 
@@ -108,7 +108,7 @@ struct trip {
 	int nb_global;
 	struct cell defs[MAX_MEMBER+1];
 	int nb_defs;
-	struct cell classes[MAX_MEMBER+1];
+	struct class_cell classes[MAX_MEMBER+1];
 	int nb_classes;
 	struct cell funcs[MAX_MEMBER+1];
 	int nb_funcs;
@@ -119,6 +119,7 @@ struct trip {
 	int break_;
 	int continue_;
 	int return_;
+	var cond;
 	var return_val;
 
 	struct context *ctx;
@@ -149,6 +150,8 @@ int id_cmp(char *a, char *b);
 char *id_dup(char *a);
 void call_exec(struct trip *st, char *func, char *id, var self, char *clas, char *meth);
 var get_data(struct trip *st, char *is_self, char *name, int return_addr);
+void skip_body(struct trip *st);
+void skip_param(struct trip *st);
 
 int error(char *txt, struct trip *st)
 {
@@ -166,6 +169,8 @@ int error(char *txt, struct trip *st)
 	}
 	file = st->files[i].file_name;
 	printf("\n#error \"%s @ line %d in %s\"\n", txt, l, file);
+	fflush(stdout);
+	__builtin_trap();
 	exit(-1);
 }
 
@@ -520,20 +525,53 @@ int printsub(char *name, int len)
 
 void declare_class(struct trip *st, char *cid)
 {
+	char *id;
+	char *p;
+	int l;
 	if (st->nb_classes >= MAX_MEMBER) {
 		error("too many classes", st);
 	}
 	st->classes[st->nb_classes].name = cid;
+	st->classes[st->nb_classes].nb_methods = 0;
 	st->classes[st->nb_classes].data = (var)(st->buf + st->pos);
 	st->nb_classes++;
+
 	if (st->mode == MODE_INTERP) {
 	} else {
-		printf("struct %s;\n", id_tmp(st,cid));
+		printf("struct %s {\n", id_tmp(st,cid));
+	}
+	while (st->pos < st->end) {
+		whitespaces(st);
+		p = st->buf + st->pos;
+		if (is(st, p, "field")) {
+			st->pos += 5;
+			whitespaces(st);
+			id = identifier(st, &l);
+			if (st->mode == MODE_INTERP) {
+			} else {
+				printf("\tvar %s;\n", id_tmp(st,id));
+			}
+			end_of_expr(st);
+		} else if (is(st, p, "method")) {
+			break;
+		} else if (*p == '}') {
+			break;
+		} else {
+			while (*p != '\n') {
+				st->pos++;
+				p = st->buf + st->pos;
+			}
+		}
+	}
+	if (st->mode == MODE_INTERP) {
+	} else {
+		printf("};\n");
 	}
 }
 
 void declare_func(struct trip *st, char *id)
-{	if (st->nb_funcs >= MAX_MEMBER) {
+{
+	if (st->nb_funcs >= MAX_MEMBER) {
 		error("too many functions", st);
 	}
 	st->funcs[st->nb_funcs].name = id;
@@ -547,6 +585,14 @@ void declare_func(struct trip *st, char *id)
 
 void declare_method(struct trip *st, char *cid, char *id)
 {
+	struct class_cell *cl = st->classes + st->nb_classes - 1;
+	if (!cl || cl->nb_methods >= MAX_MEMBER) {
+		error("too many functions", st);
+	}
+	cl->methods[cl->nb_methods].name = id;
+	cl->methods[cl->nb_methods].data = (var)(st->buf + st->pos);
+	cl->nb_methods++;
+
 	if (st->mode == MODE_INTERP) {
 	} else {
 		printf("var %s__", id_tmp(st, cid));
@@ -576,6 +622,8 @@ void declare(struct trip *st)
 			whitespaces(st);
 			id = identifier(st, &l);
 			declare_func(st, id);
+			skip_param(st);
+			skip_body(st);
 		} else if (is(st, p, "define")) {
 			k_define(st);
 
@@ -590,6 +638,8 @@ void declare(struct trip *st)
 			whitespaces(st);
 			id = identifier(st, &l);
 			declare_method(st, cid, id);
+			skip_param(st);
+			skip_body(st);
 		} else {
 			while (*p != '\n') {
 				st->pos++;
@@ -710,7 +760,16 @@ var pop_context(struct trip *st)
 
 var run(struct trip *st, char *class_, char *name) 
 {
-	call_exec(st, (char*)get_data(st, NULL, name, 0), name, 0, class_, NULL);
+	int i;
+	char *func=  NULL;
+	for (i = 0; i < st->nb_funcs;i++) {
+		if (!id_cmp(name, st->funcs[i].name)) {
+			func = (char*)st->funcs[i].data;
+			break;
+		}
+	}
+	printf ("%d RUN %30s\n", i, func);
+	call_exec(st, func, name, 0, class_, NULL);
 	return 0;
 }
 
@@ -1247,6 +1306,11 @@ char *str_lit(struct trip *st)
 			p++;
 			st->pos++;
 		}
+		while (!*p) {
+			p++;
+			st->pos++;
+		}
+		return b + 1;
 		return b + 1;
 	}
 	if (*p != '"') {
@@ -1722,7 +1786,6 @@ void k_define(struct trip *st)
 	char *val;
 	int n;
 	int l;
-	int o;
 	int i;
 
 	st->pos += 6;
@@ -1730,8 +1793,6 @@ void k_define(struct trip *st)
 	id = identifier(st, &l);
 	if (id) {
 		whitespaces(st);
-		o = id[l];
-		id[l] = 0;
 		for (i = 0; i < st->nb_defs; i++) {
 			if (!id_cmp(st->defs[i].name, id)) {
 				skip(st);
@@ -1740,14 +1801,13 @@ void k_define(struct trip *st)
 		}
 		if (st->mode == MODE_INTERP) {
 		} else {
-			printf("#define %s ", id);
+			printf("#define %s ", id_tmp(st,id));
 		}
 		s = str_lit(st);
 		if (st->nb_defs >= MAX_MEMBER) {
 			error("too many define", st);
 		}
 		st->defs[st->nb_defs].name = id_dup(id);
-		id[l] = o;
 		if (s) {
 			if (st->mode == MODE_INTERP) {
 				st->defs[st->nb_defs].data = (var)id_dup(s);
@@ -1806,29 +1866,24 @@ void parameters(struct trip *st, int n)
 	char *s;
 	int op;
 	int l;
-	int o;
 	// FIXME
 	whitespaces(st);
 	op = operator(st);
 	while (op != ')') {
 		whitespaces(st);
 		s = identifier(st, &l);
-		o = s[l];
-		s[l] = 0;
 		if (n > 0) {
 			printf(", ");
 		}
 		n++;
-		printf("var %s", s);
+		printf("var %s", id_tmp(st,s));
 		if (st->nb_vars >= MAX_MEMBER) {
 			error("too many parmeters", st);
 		}
 		st->vars[st->nb_vars].name = s;
 		st->nb_vars++;
-		s[l] = o;
 		whitespaces(st);
 		op = operator(st);
-		s[l] = 0;
 	}
 }
 
@@ -1846,7 +1901,6 @@ void k_func(struct trip *st)
 	whitespaces(st);
 	op = operator(st);
 	if (op == '(') {
-		s[l] = 0;
 		st->func_name = s;
 		printf("var %s(", id_tmp(st, st->func_name));
 		parameters(st, 0);
@@ -1900,7 +1954,7 @@ void k_method(struct trip *st)
 		if (op == '{') {
 			printf(")\n{\n");
 			printf("\tstruct %s *__self = (void*)self;(void)__self;\n", 
-					st->class_name);
+					id_tmp(st,st->class_name));
 			compound(st);
 		}
 		if (!st->returnn) {
@@ -1997,7 +2051,6 @@ void k_var(struct trip *st)
 	char *id;
 	int l;
 	int n = 0;
-	int o;
 	st->pos += 3;
 	whitespaces(st);
 	if (st->mode == MODE_INTERP) {
@@ -2007,17 +2060,14 @@ void k_var(struct trip *st)
 	id = identifier(st, &l);
 	whitespaces(st);
 	while (st->pos < st->end && st->buf[st->pos] == ',') {
-		o = id[l];
-		id[l] = 0;
 		if (st->mode == MODE_INTERP) {
 		} else {
 			if (n) {
-				printf(", %s", id);
+				printf(", %s", id_tmp(st,id));
 			} else {
-				printf(" %s", id);
+				printf(" %s", id_tmp(st,id));
 			}
 		}
-		id[l] = o;
 		n++;
 		if (st->nb_vars >= MAX_MEMBER) {
 			error("too many var", st);
@@ -2029,8 +2079,6 @@ void k_var(struct trip *st)
 		id = identifier(st, &l);
 	}
 	end_of_expr(st);
-	o = id[l];
-	id[l] = 0;
 	if (st->nb_vars >= MAX_MEMBER) {
 		error("too many var", st);
 	}
@@ -2039,12 +2087,11 @@ void k_var(struct trip *st)
 	if (st->mode == MODE_INTERP) {
 	} else {
 		if (n) {
-			printf(", %s;\n", id);
+			printf(", %s;\n", id_tmp(st,id));
 		} else {
-			printf(" %s;\n", id);
+			printf(" %s;\n", id_tmp(st,id));
 		}
 	}
-	id[l] = o;
 }
 
 void k_ref(struct trip *st)
@@ -2078,21 +2125,17 @@ void k_poke(struct trip *st)
 {
 	char *id;
 	int l;
-	int o;
 	char *arr;
 
 	st->pos += 4;
 	whitespaces(st);
 	id = identifier(st, &l);
-	o = id[l];
-	id[l] = 0;
 	indent(st);
 	if (st->mode == MODE_INTERP) {
 		arr = (char*)get_data(st, NULL, id, 0);
 	} else {
-		printf("((unsigned char*)%s)[", id);
+		printf("((unsigned char*)%s)[", id_tmp(st,id));
 	}
-	id[l] = o;
 	expression(st);
 	if (st->mode == MODE_INTERP) {
 		arr = arr + pop(st);
@@ -2112,20 +2155,16 @@ void k_peek(struct trip *st)
 {
 	char *id;
 	int l;
-	int o;
 	char *arr;
 
 	st->pos += 4;
 	whitespaces(st);
 	id = identifier(st, &l);
-	o = id[l];
-	id[l] = 0;
 	if (st->mode == MODE_INTERP) {
 		arr = (char*)get_data(st, NULL, id, 0);
 	} else {
-		printf("((unsigned char*)%s)[", id);
+		printf("((unsigned char*)%s)[", id_tmp(st,id));
 	}
-	id[l] = o;
 	expression(st);
 	if (st->mode == MODE_INTERP) {
 		push(st, ((var)arr[pop(st)]) & 0xFF);
@@ -2305,39 +2344,66 @@ void k_new(struct trip *st)
 
 void k_if(struct trip *st)
 {
+	int sp;
 	st->pos += 2;
 	whitespaces(st);
-	indent(st);
-	printf("{\n");
-	indent(st);
-	printf("\tvar __cond = ");
+	if (st->mode == MODE_INTERP) {
+		sp = st->sp;
+	} else {
+		indent(st);
+		printf("{\n");
+		indent(st);
+		printf("\tvar __cond = ");
+	}
 	expression(st);
-	printf(";\n");
 	st->pos++;
 	whitespaces(st);
-	conditional(st,0);
-	printf("\n");
-	indent(st);
-	printf("}\n");
+	if (st->mode == MODE_INTERP) {
+		if (sp >= st->sp) {
+			error("missing condition", sp);
+		}
+		st->cond = pop(st);
+		conditional(st,0);
+	} else {
+		printf(";\n");
+		conditional(st,0);
+		printf("\n");
+		indent(st);
+		printf("}\n");
+	}
 	end_of_expr(st);
 }
 
 void k_while(struct trip *st)
 {
+	int sp;
 	st->pos += 5;
 	whitespaces(st);
-	indent(st);
-	printf("{");
-	indent(st);
-	printf("var __cond = ");
+	if (st->mode == MODE_INTERP) {
+		sp = st->sp;
+	} else {
+		indent(st);
+		printf("{");
+		indent(st);
+		printf("var __cond = ");
+	}
+
 	expression(st);
-	printf(";\n");
 	st->pos++;
 	whitespaces(st);
-	conditional(st,1);
-	printf("\n");
-	indent(st);
-	printf("}\n");
+	if (st->mode == MODE_INTERP) {
+		if (sp >= st->sp) {
+			error("missing condition.", sp);
+		}
+		st->cond = pop(st);
+		conditional(st,1);
+	} else {
+		printf(";\n");
+		conditional(st,1);
+		printf("\n");
+		indent(st);
+		printf("}\n");
+	}
 	end_of_expr(st);
 }
 
@@ -2457,16 +2523,20 @@ void k_load(struct trip *st, char *s)
 void k_include(struct trip *st)
 {
 	char *s;
-
+	char *p;
+	char o;
 	st->pos += 7;
 	whitespaces(st);
 	s = str_lit(st);
 	if (strstr(s, "std.3p")) {
-		s[strlen(s)-2] = 0;
+		p = s +strlen(s)-2;
+		o = *p;
+		*p = 0;
 		if (st->mode == MODE_INTERP) {
 		} else {
 			printf("#include \"%sh\"\n", s);
 		}
+		*p = o;
 		return;
 	}
 	k_load(st, s);
@@ -2794,18 +2864,62 @@ void call(struct trip *st)
 	}
 }
 
+void skip_param(struct trip *st)
+{
+	whitespaces(st);
+	if (st->buf[st->pos] != '(') {
+		printf("GGGGGGG %s HHHHHHHHHHHH\n",st->buf + st->pos);
+		error("( mess", st);
+	}
+	st->pos++;
+	while (st->pos < st->end) {
+		switch (st->buf[st->pos]) {
+		case ')':
+			st->pos++;
+			return;
+		default:
+			st->pos++;
+		}
+	}
+}
+
+
 void skip_body(struct trip *st)
 {
-	while (st->pos < st->end && st->buf[st->pos] != '}') {
-		st->pos++;
+	whitespaces(st);
+	if (st->buf[st->pos] != '{') {
+		error("{ mess", st);
 	}
-	st->pos++;		
+	st->pos++;
+	while (st->pos < st->end) {
+		switch (st->buf[st->pos]) {
+		case '"':
+		case '`':
+			str_lit(st);
+			break;
+		case '\'':
+			num_lit(st);
+			break;
+		case '{':
+			skip_body(st);
+			break;
+		case '}':
+			st->pos++;		
+			return;
+		case '#':
+			comment(st);
+			break;
+		default:
+			st->pos++;
+		}
+	}
 }
 
 void compound(struct trip *st)
 {
 	char *p;
 	int l;
+	int k;
 	whitespaces(st);
 	st->indent++;
 	while (st->pos < st->end) {
@@ -2817,11 +2931,17 @@ void compound(struct trip *st)
 			return;
 		case 'a':
 			if (is(st, p, "array")) {
+				st->pos += 5;
+				whitespaces(st);
+				identifier(st, &k);	
 				skip_body(st);
 			}
 			break;
 		case 'b':
 			if (is(st, p, "bytes")) {
+				st->pos += 5;	
+				whitespaces(st);
+				identifier(st, &k);	
 				skip_body(st);
 			} else if (is(st, p, "break")) {
 				k_break(st);
@@ -2829,7 +2949,10 @@ void compound(struct trip *st)
 			break;
 		case 'c':
 			if (is(st, p, "class")) {
-				k_class(st);
+				st->pos += 5;	
+				whitespaces(st);
+				identifier(st, &k);	
+				skip_body(st);
 			} else if (is(st, p, "continue")) {
 				k_continue(st);
 			}
@@ -2843,9 +2966,13 @@ void compound(struct trip *st)
 			break;
 		case 'f':
 			if (is(st, p, "func")) {
-				k_func(st);
+				st->pos += 4;	
+				whitespaces(st);
+				identifier(st, &k);
+				skip_param(st);	
+				skip_body(st);
 			} else if (is(st, p, "field")) {
-				k_field(st);
+				skip(st);
 			}
 			break;
 		case 'i':
@@ -2857,7 +2984,11 @@ void compound(struct trip *st)
 			break;
 		case 'm':
 			if (is(st, p, "method")) {
-				k_method(st);
+				st->pos += 6;	
+				whitespaces(st);
+				identifier(st, &k);	
+				skip_param(st);	
+				skip_body(st);
 			}
 			break;
 		case 'n':
@@ -2924,6 +3055,37 @@ void compound(struct trip *st)
 	st->indent--;
 }
 
+void implement(struct trip *st, int n, struct cell *c, char *type)
+{
+
+	int i;
+	for (i = 0; i < n; i++) {
+		st->func_name = c[i].name;
+		fix_pos_buf(st, (void*)c[i].data);
+		st->pos -= id_len(st->func_name);
+		while (id_cmp(type, st->buf + st->pos)) {
+			st->pos--;
+		}
+		if (type[0] == 'f') {
+			k_func(st);
+		} else {
+			k_method(st);
+		}
+	}
+}
+
+void implement_class(struct trip *st, struct class_cell *c)
+{
+	fix_pos_buf(st, (void*)c->data);
+	st->class_name = c->name;
+	st->pos -= id_len(st->class_name);
+	while (id_cmp("class", st->buf + st->pos)) {
+		st->pos--;
+	}
+	compound(st);
+	implement(st, c->nb_methods, c->methods, "method");	
+}
+
 int main(int argc, char *argv[]) 
 {
 	struct trip *st;
@@ -2960,6 +3122,18 @@ int main(int argc, char *argv[])
 					st->__self = 0;
 					st->pos = 0;
 					compound(st);
+				}
+				if (st->func_name) {
+					printf("\treturn 0;\n}\n");
+				}
+				st->func_name = NULL;
+				st->class_name = NULL;
+				st->__self = 0;
+				st->pos = 0;
+				implement(st, st->nb_funcs, st->funcs, "func");
+				for (i = 0; i < st->nb_classes; i++) {
+					implement_class(st, 
+						st->classes + i);
 				}
 			}
 			if (st->func_name) {

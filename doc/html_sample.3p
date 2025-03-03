@@ -3,10 +3,13 @@ include "stddoc.3p"
 
 func doc(){begin_document
 
-title 			"=3D The trip =22Document=22 Format =3D"
+title		"=3D The trip =22Document=22 Format =3D"
+
+
 page_break
 
 head 1 "MEGA=0AMIX"
+
 par "This is techno !!"
 
 txt "Follow text sentences....
@@ -17,5 +20,9 @@ line 3
 
 nl "Yo Man."
 
-end_document} 
-func startup(argc,argv) { doc }
+
+head 2 "TODO commands:"
+nl "path stroke_color stroke_width fill_color bg_color font anchor link gif input" 
+nl ""
+
+end_document}func startup(argc,argv){doc}
