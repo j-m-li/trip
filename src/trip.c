@@ -392,9 +392,6 @@ int end_of_expr(struct trip *st)
 			whitespaces(st);
 			break;
 		default:
-			printf(" %c \n",
-		st->buf[st->pos]);
-			error("new line or ';' expected", st);
 			return 0;
 		}
 	}
@@ -769,6 +766,11 @@ var run(struct trip *st, char *class_, char *name)
 			break;
 		}
 	}
+	if (!func) {
+		st->pos = 0;
+		compound(st);
+		return 0;
+	}
 	call_exec(st, func, name, 0, class_, NULL, 0);
 	return 0;
 }
@@ -1134,7 +1136,9 @@ char *variable(struct trip *st, int return_addr)
 		if (!is_var(st, id) && !get_class(st, id) 
 				&& !is_def(st, id) && !is_global(st, id)) 
 		{
-			sel = "__self->";
+			if (id_cmp(st->func_name, "main")) {
+				sel = "__self->";
+			}
 		}
 		if (st->mode == MODE_INTERP) {
 			arr = (var*)get_data(st, sel, id, 0);
@@ -3118,6 +3122,23 @@ void skip_body(struct trip *st)
 	skip_body_end(st);
 }
 
+
+void check_main(struct trip *st)
+{
+	if (!st->main && !st->class_name && !st->func_name) {
+		st->indent = 1;
+		st->__self = 0;
+		st->func_name = "main";
+		if (st->mode == MODE_INTERP) {
+			
+		} else {
+			printf("int main(int argc,"
+				 " char *argv[]) {\n");
+		}
+		st->main = 1;
+	}
+}
+
 void compound(struct trip *st)
 {
 	char *p;
@@ -3216,6 +3237,7 @@ void compound(struct trip *st)
 			if (is(st, p, "return")) {
 				k_return(st);
 			} else if (is(st, p, "ref")) {
+				check_main(st);
 				k_ref(st);
 			}
 			break;
@@ -3226,6 +3248,7 @@ void compound(struct trip *st)
 			break;
 		case 'v':
 			if (is(st, p, "var")) {
+				check_main(st);
 				k_var(st);
 			}
 			break;
@@ -3242,16 +3265,7 @@ void compound(struct trip *st)
 			break;
 		}
 		if (l == st->pos) {
-			if (!st->main && !st->class_name && !st->func_name) {
-				st->indent = 1;
-				st->func_name = "main";
-				if (st->mode == MODE_INTERP) {
-				} else {
-					printf("int main(int argc,"
-						 " char *argv[]) {\n");
-				}
-				st->main = 1;
-			}
+			check_main(st);
 			call(st);
 			push(st, st->return_val);
 			if (l == st->pos) {
@@ -3351,7 +3365,8 @@ int main(int argc, char *argv[])
 				}
 			}
 			if (!st->main) {
-				if (st->mode == MODE_C) {
+				if (st->mode == MODE_INTERP) {
+				} else if (st->mode == MODE_C) {
 					printf("int main(int argc, char *argv[]) {\n");
 					printf("\treturn startup((var)argc,(var)argv);\n");
 					printf("}\n");

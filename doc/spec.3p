@@ -44,19 +44,19 @@ method print_this () {
 # args[0]: this
 # args[1]: increment value
 method do_something (inc) {
-	var s;
+	var s
 	set next next + inc
-	print "=0A";
+	print "=0A"
 	print10 next
-	print "=0A";
+	print "=0A"
 	this.print_this
 
 	set s {file_size "README.md"}
-	print "=0A";
+	print "=0A"
 	print10 s
-	print "=0A";
+	print "=0A"
 	print10 {file_size "README.md"}
-	print "=0A";
+	print "=0A"
 	print four
 	print " "
 	print10 {str_cmp four "four! "}
@@ -72,7 +72,7 @@ method do_something (inc) {
 	print10 array_of_integer[1]
 	print "BBBBBB=0A";
 	print_hi
-	print "--------BBBBBB=0A";
+	print "--------BBBBBB=0A"
 
 	return one
 }
