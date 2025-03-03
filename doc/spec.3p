@@ -30,11 +30,15 @@ method init () {
 
 # args[0]: this
 method dispose () {
+	print "delete this=0A"
 	delete this
+	print "ok=0A"
 }
 
 method print_this () {
+	print "this pointer: "
 	print10 this
+	print "=0A"
 }
 
 # args[0]: this
@@ -121,11 +125,12 @@ multi-line=0A"
 	print "TOB=0A"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
 	print "__________________ JHGJHGGJH=0A"
-	f 			# indirect call of method with NULL "this"
+	f null			# indirect call of method with NULL "this"
 	print "JHGJHGGJH=0A"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
 
+	print "=0A"
 	if x - 5 ?
 		> {print "x greater than 5"},
 		< {print "x less than 5"},
@@ -141,13 +146,17 @@ multi-line=0A"
 		>~ {print "x greater or equal zero"},
 		<~ {print "x less than or equal zero"}
 	;
+	print "=0A is 7 =3D "
+	print10 (1+2*3)
+	print "=0A"
+	print10 ((1+2)*3)
 	print "=0A"
 	while x ? > { 	# loop while x greater than 0
 		print10 x
-		if x - 2 ? <~ continue; # skip and loop if x is less than 3
-		if x - 4 ? < break;	# stop loop if x is less than 4
 		print "=0A"
 		set x x - 1
+		if x - 2 ? <~ continue; # skip and loop if x is less than 3
+		if x - 2 ? < break;	# stop loop if x is less than 4
 	};
 
 	s.do_something 7
