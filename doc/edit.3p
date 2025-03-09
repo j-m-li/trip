@@ -7,13 +7,15 @@ func loop (term) {
 	term_wait term 10
 	if term[3] ?
 		1 {
-			return 0
 			print10 term[4]
+			flush
+			return 0
 			print "=0A"
 			print term[5]
 			print "=0A"
 			
 		},
+		0 { return 0 },
 		<> {
 			return -1
 		};
@@ -23,9 +25,9 @@ func loop (term) {
 func moveto(x,y)
 {
 	print "=1B["
-	print10 y
+	print10 (y+1)
 	print ";"
-	print10 x
+	print10 (x+1)
 	print "f"
 }
 
@@ -63,9 +65,17 @@ func normal()
 	print "=1B[0m"
 }
 
+func query_pos()
+{
+	print "=1B[6n"
+	flush
+}
+
+
 func init (term)
 {
 		
+	print "=1B[!p"
 	print "=1B[?1049h"
 	print "=1B["
 	print10 1 
@@ -78,7 +88,7 @@ func init (term)
 
 func toolbar (term)
 {	
-	moveto 1 (term[2])
+	moveto 0 (term[2]-1)
 	bold
 	color 0 1
 	print "["
@@ -91,7 +101,7 @@ func toolbar (term)
 	regular
 	color 7 0
 	normal
-	print " > hello world"
+	print " > héllo world"
 	flush
 
 }
@@ -101,16 +111,20 @@ func toolbar (term)
 func startup (argc, argv) {
 	var x
 	var term
+
 	set term {new array 10}
 	term_init term
+
+	init term
+
 	print "width: "
 	print10 term[1]
 	print "=0Aheight: "
 	print10 term[2]
 	print "=0A"
-	init term
+
 	toolbar term
-	moveto 1 1
+	moveto 0 0
 
 	flush 
 
