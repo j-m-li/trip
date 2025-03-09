@@ -8,6 +8,7 @@ This software is dedicated to the public domain.
 A interactive shell, script and compiled language.
 
 
+https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences
 
 ***
 

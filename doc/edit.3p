@@ -4,9 +4,10 @@
 include "../lib/std.3p"
 
 func loop (term) {
-	term_wait term 100
+	term_wait term 10
 	if term[3] ?
 		1 {
+			return 0
 			print10 term[4]
 			print "=0A"
 			print term[5]
@@ -17,6 +18,82 @@ func loop (term) {
 			return -1
 		};
 	return 0
+}
+
+func moveto(x,y)
+{
+	print "=1B["
+	print10 y
+	print ";"
+	print10 x
+	print "f"
+}
+
+func color(front, back)
+{
+	print "=1B["
+	print10 (front + 30)
+	print ";"
+	print10 (back + 40)
+	print "m"
+}
+
+func bold()
+{
+	print "=1B[1m"
+}
+
+func regular()
+{
+	print "=1B[22m"
+}
+
+func nounderline()
+{
+	print "=1B[24m"
+}
+
+func underline()
+{
+	print "=1B[4m"
+}
+
+func normal()
+{
+	print "=1B[0m"
+}
+
+func init (term)
+{
+		
+	print "=1B[?1049h"
+	print "=1B["
+	print10 1 
+	print ";"
+	print10 (term[2]-1)
+	print "r"
+	print "=1B]0;Swiss-OS=07"
+	
+}
+
+func toolbar (term)
+{	
+	moveto 1 (term[2])
+	bold
+	color 0 1
+	print "["
+	color 7 1
+#	underline
+	print "+"
+#	nounderline
+	color 0 1
+	print "]"
+	regular
+	color 7 0
+	normal
+	print " > hello world"
+	flush
+
 }
 
 # args[0]: command line argument count
@@ -31,7 +108,12 @@ func startup (argc, argv) {
 	print "=0Aheight: "
 	print10 term[2]
 	print "=0A"
-	
+	init term
+	toolbar term
+	moveto 1 1
+
+	flush 
+
 	set x 0
 	while x ? 0 { 	# loop while x greater than 0
 		set x {loop term}

@@ -2744,6 +2744,9 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		if (!id_cmp(id, "file_size")) {
 			*argc = 1;
 			return (var(*)())file_size;
+		} else if (!id_cmp(id, "flush")) {
+			*argc = 0;
+			return (var(*)())flush;
 		} else if (!id_cmp(id, "file_load")) {
 			*argc = 3;
 			return (var(*)())file_load;
@@ -2759,6 +2762,9 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		} else if (!id_cmp(id, "print10")) {
 			*argc = 1;
 			return (var(*)())print10;
+		} else if (!id_cmp(id, "printb")) {
+			*argc = 2;
+			return (var(*)())printb;
 		}
 		break;
 	case 'q':

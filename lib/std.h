@@ -20,9 +20,27 @@ var print10(var n)
 	return 0;
 
 }
+
+var flush()
+{
+	fflush(stdout);
+	return 0;
+}
+
 var print(var txt)
 {
 	printf("%s", (char*)txt);
+	return 0;
+}
+
+var printb(var len, var buf)
+{
+#ifdef _WIN32
+	WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), 
+			(char*)buf, len, NULL, NULL);
+#else
+	fwrite((void*)buf, len, 1, stdout);
+#endif
 	return 0;
 }
 
@@ -135,19 +153,30 @@ int main(VOID)
     if (! GetConsoleMode(hStdin, &fdwSaveOldMode) )
         ErrorExit("GetConsoleMode");
 
+    // https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences
+    //
     // Enable the window and mouse input events.
 
-    fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
+    fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     if (! SetConsoleMode(hStdin, fdwMode) )
         ErrorExit("SetConsoleMode");
+
+     /* UTF-8 */
+     SetConsoleOutputCP(65001); //chcp 65001
+     SetConsoleCP(65001);
 
     // Loop to read and handle the next 100 input events.
 
     while (counter++ <= 100)
     {
+	if (!GetNumberOfConsoleInputEvents(hStdin, &cNumRead)) {
+            ErrorExit("ReadConsoleInputEvents");
+	}
+	Sleep(1); // milliseconds
         // Wait for the events.
 
-        if (! ReadConsoleInput(
+        //if (! ReadConsoleInput(
+        if (! PeekConsoleInput(
                 hStdin,      // input buffer handle
                 irInBuf,     // buffer to read into
                 128,         // size of read buffer
@@ -182,6 +211,7 @@ int main(VOID)
                     break;
             }
         }
+	FlushConsoleInputBuffer(hStdin);
     }
 
     // Restore input mode on exit.
@@ -204,11 +234,19 @@ VOID ErrorExit (LPSTR lpszMessage)
 
 VOID KeyEventProc(KEY_EVENT_RECORD ker)
 {
+    char buffer[400];
+    DWORD rd;
     printf("Key event: ");
 
     if(ker.bKeyDown)
         printf("key pressed\n");
     else printf("key released\n");
+
+    if (!ReadConsoleA(hStdin, buffer, sizeof(buffer) - 1, &rd, NULL)) {
+            ErrorExit("ReadConsoleA");
+	   }
+	buffer[rd] = 0;
+
 }
 
 VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
@@ -259,6 +297,63 @@ VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD wbsr)
     printf("Console screen buffer is %d columns by %d rows.\n", wbsr.dwSize.X, wbsr.dwSize.Y);
 }
 
+
+BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
+{
+    switch (fdwCtrlType)
+    {
+        // Handle the CTRL-C signal.
+    case CTRL_C_EVENT:
+        printf("Ctrl-C event\n\n");
+        Beep(750, 300);
+        return TRUE;
+
+        // CTRL-CLOSE: confirm that the user wants to exit.
+    case CTRL_CLOSE_EVENT:
+        Beep(600, 200);
+        printf("Ctrl-Close event\n\n");
+        return TRUE;
+
+        // Pass other signals to the next handler.
+    case CTRL_BREAK_EVENT:
+        Beep(900, 200);
+        printf("Ctrl-Break event\n\n");
+        return FALSE;
+
+    case CTRL_LOGOFF_EVENT:
+        Beep(1000, 200);
+        printf("Ctrl-Logoff event\n\n");
+        return FALSE;
+
+    case CTRL_SHUTDOWN_EVENT:
+        Beep(750, 500);
+        printf("Ctrl-Shutdown event\n\n");
+        return FALSE;
+
+    default:
+        return FALSE;
+    }
+}
+
+int main(void)
+{
+    if (SetConsoleCtrlHandler(CtrlHandler, TRUE))
+    {
+        printf("\nThe Control Handler is installed.\n");
+        printf("\n -- Now try pressing Ctrl+C or Ctrl+Break, or");
+        printf("\n    try logging off or closing the console...\n");
+        printf("\n(...waiting in a loop for events...)\n\n");
+
+        while (1) {}
+    }
+    else
+    {
+        printf("\nERROR: Could not set control handler");
+        return 1;
+    }
+    return 0;
+}
+
 #else /*_WIN32 */
 struct termios orig_termios;
 struct sigaction old_action;
@@ -266,6 +361,7 @@ struct sigaction old_action;
 var term_deinit()
 {
 	printf("\x1B[?1000l\x1B[?1003l\x1B[?1015l\x1B[?1006l"); 
+	printf("\x1B[?1049l\x1B[r"); 
 	fflush(stdout);
 	tcsetattr(0, TCSANOW, &orig_termios);
 	/*system("tset");*/
