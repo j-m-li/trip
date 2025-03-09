@@ -1,0 +1,44 @@
+
+# comment
+
+include "../lib/std.3p"
+
+func loop (term) {
+	term_wait term 100
+	if term[3] ?
+		1 {
+			print10 term[4]
+			print "=0A"
+			print term[5]
+			print "=0A"
+			
+		},
+		<> {
+			return -1
+		};
+	return 0
+}
+
+# args[0]: command line argument count
+# args[1]: array of string of each arguments
+func startup (argc, argv) {
+	var x
+	var term
+	set term {new array 10}
+	term_init term
+	print "width: "
+	print10 term[1]
+	print "=0Aheight: "
+	print10 term[2]
+	print "=0A"
+	
+	set x 0
+	while x ? 0 { 	# loop while x greater than 0
+		set x {loop term}
+	};
+	print "=0ADONE!=0A"
+
+	return 0
+}
+
+

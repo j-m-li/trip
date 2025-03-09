@@ -8,6 +8,8 @@ all: bin
 	#gdb --args ./bin/trip -s doc/spec.3p HELLO World
 	./bin/trip -s doc/html_sample.3p 
 	./bin/trip -s doc/spec.3p HELLO World
+	./bin/trip -c doc/edit.3p > bin/e.c	
+	cc -Wall -g -o bin/edit bin/e.c ;
 
 bin:
 	mkdir -p bin

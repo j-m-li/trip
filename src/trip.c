@@ -138,7 +138,7 @@ struct trip *load(char *file);
 void compound(struct trip *st);
 void spaces(struct trip *st);
 int expression(struct trip *st);
-var run(struct trip *st, char *class_, char *name);
+var run_it(struct trip *st, char *class_, char *name);
 void k_func(struct trip *st);
 void k_array(struct trip *st);
 void k_bytes(struct trip *st);
@@ -756,7 +756,7 @@ var pop_context(struct trip *st)
 	return 0;
 }
 
-var run(struct trip *st, char *class_, char *name) 
+var run_it(struct trip *st, char *class_, char *name) 
 {
 	int i;
 	char *func=  NULL;
@@ -1720,7 +1720,9 @@ void condbody_interp(struct trip *st, var cond, int is_while)
 	}
 	whitespaces(st);
 	if (cond) {
-		if (!is_while) {
+		if (is_while) {
+			st->continue_ = 1;
+		} else {
 			st->else_ = 1;
 		}
 	}
@@ -2758,7 +2760,12 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 			*argc = 1;
 			return (var(*)())print10;
 		}
-
+		break;
+	case 'q':
+		if (!id_cmp(id, "quit")) {
+			*argc = 0;
+			return (var(*)())quit;
+		}
 	case 's':
 		if (!id_cmp(id, "str_cmp")) {
 			*argc = 2;
@@ -2766,6 +2773,21 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		} else if (!id_cmp(id, "str_dup")) {
 			*argc = 1;
 			return (var(*)())str_dup;
+		}
+		break;
+	case 't':
+		if (!id_cmp(id, "term_wait")) {
+			*argc = 2;
+			return (var(*)())term_wait;
+		} else if (!id_cmp(id, "term_init")) {
+			*argc = 1;
+			return (var(*)())term_init;
+		} else if (!id_cmp(id, "term_deinit")) {
+			*argc = 0;
+			return (var(*)())term_deinit;
+		} else if (!id_cmp(id, "term_size")) {
+			*argc = 1;
+			return (var(*)())term_size;
 		}
 		break;
 	}
@@ -3387,7 +3409,7 @@ int main(int argc, char *argv[])
 				st->vars[1].data = (var)args;
 				st->nb_vars = 2;
 				st->line = 1;
-				return (int)run(st, NULL, "startup");
+				return (int)run_it(st, NULL, "startup");
 			}
 			trip__delete(st);
 		}
