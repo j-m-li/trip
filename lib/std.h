@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+var quit(void);
+var term_deinit();
+
 var print10(var n)
 {
 	printf("%ld", n);
@@ -44,11 +47,13 @@ var printb(var len, var buf)
 	return 0;
 }
 
+
 var file_size(var path)
 {
 	FILE *fp;
 	var si;
 	fp = fopen((char*)path, "rb");
+    
 	if (!fp) {
 		return 0;
 	}
@@ -129,68 +134,99 @@ var term_size(var a)
 
 #ifdef _WIN32
 HANDLE hStdin;
+HANDLE hStdout;
 DWORD fdwSaveOldMode;
+DWORD fdwSaveOldModeOut;
 
-VOID ErrorExit(LPCSTR);
-VOID KeyEventProc(KEY_EVENT_RECORD);
+VOID ErrorExit(LPSTR lpszMessage);
+VOID KeyEventProc(KEY_EVENT_RECORD, char *buf, DWORD max, DWORD *ret);
 VOID MouseEventProc(MOUSE_EVENT_RECORD);
 VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD);
+BOOL WINAPI CtrlHandler(DWORD fdwCtrlType);
 
-int main(VOID)
+#ifdef _MSC_VER
+void __builtin_trap()
+{
+    __debugbreak();
+}
+#endif
+
+
+
+var term_init(var a)
 {
     DWORD cNumRead, fdwMode, i;
     INPUT_RECORD irInBuf[128];
     int counter=0;
+    var *term = (void*)a;
 
     // Get the standard input handle.
 
     hStdin = GetStdHandle(STD_INPUT_HANDLE);
     if (hStdin == INVALID_HANDLE_VALUE)
         ErrorExit("GetStdHandle");
-
+    hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hStdout == INVALID_HANDLE_VALUE)
+        ErrorExit("GetStdHandle");
     // Save the current input mode, to be restored on exit.
 
     if (! GetConsoleMode(hStdin, &fdwSaveOldMode) )
         ErrorExit("GetConsoleMode");
-
+    if (! GetConsoleMode(hStdout, &fdwSaveOldModeOut) )
+        ErrorExit("GetConsoleMode");
     // https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences
     //
     // Enable the window and mouse input events.
 
-    fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS /*ENABLE_PROCESSED_INPUT*/ /*| ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_VIRTUAL_TERMINAL_INPUT*/;
     if (! SetConsoleMode(hStdin, fdwMode) )
         ErrorExit("SetConsoleMode");
+        /*
+    fdwMode = ENABLE_PROCESSED_OUTPUT  | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (! SetConsoleMode(hStdout, fdwMode) )
+        ErrorExit("SetConsoleMode");
+*/
+    atexit((void(*)(void))(*term_deinit));
 
+    if (!SetConsoleCtrlHandler(CtrlHandler, TRUE)) {
+            ErrorExit("SetConsoleCtrlHandler");
+    }
      /* UTF-8 */
      SetConsoleOutputCP(65001); //chcp 65001
      SetConsoleCP(65001);
 
-    // Loop to read and handle the next 100 input events.
+    term_size(a);
+     return 0;
+}
 
-    while (counter++ <= 100)
-    {
-	if (!GetNumberOfConsoleInputEvents(hStdin, &cNumRead)) {
-            ErrorExit("ReadConsoleInputEvents");
-	}
-	Sleep(1); // milliseconds
-        // Wait for the events.
-
-        //if (! ReadConsoleInput(
-        if (! PeekConsoleInput(
+var term_wait(var term_, var timeout)
+ {
+    DWORD rd;
+    DWORD cNumRead,i;
+    INPUT_RECORD irInBuf[128];
+    static char buffer[4096];
+    var *term = (void*)term_;
+    term[3] = 0;
+    rd = 0;
+    cNumRead = 0;
+    while (timeout >= 0) {
+        rd = 0;
+        if (WaitForSingleObject(hStdin, 1)) {
+            timeout--;
+            continue;
+        }
+        if (! ReadConsoleInputA(
                 hStdin,      // input buffer handle
                 irInBuf,     // buffer to read into
                 128,         // size of read buffer
                 &cNumRead) ) // number of records read
             ErrorExit("ReadConsoleInput");
-
-        // Dispatch the events to the appropriate handler.
-
         for (i = 0; i < cNumRead; i++)
         {
             switch(irInBuf[i].EventType)
             {
                 case KEY_EVENT: // keyboard input
-                    KeyEventProc(irInBuf[i].Event.KeyEvent);
+                    KeyEventProc(irInBuf[i].Event.KeyEvent, buffer, sizeof(buffer), &rd);
                     break;
 
                 case MOUSE_EVENT: // mouse input
@@ -209,15 +245,21 @@ int main(VOID)
                 default:
                     ErrorExit("Unknown event type");
                     break;
-            }
+            } 
         }
-	FlushConsoleInputBuffer(hStdin);
+        if (rd > 0) {
+            break;
+        }
+        timeout -= 1;
     }
-
-    // Restore input mode on exit.
-
-    SetConsoleMode(hStdin, fdwSaveOldMode);
-
+    
+    if (rd > 0) {
+        buffer[rd] = 0;
+        term[3] = 1; /* keyboard event type */
+	    term[4] = rd; /* event data length */
+        term[5] = (var)buffer; /* event data */
+    }
+    
     return 0;
 }
 
@@ -232,22 +274,68 @@ VOID ErrorExit (LPSTR lpszMessage)
     ExitProcess(0);
 }
 
-VOID KeyEventProc(KEY_EVENT_RECORD ker)
+// https://learn.microsoft.com/fr-fr/windows/win32/inputdev/virtual-key-codes
+
+VOID KeyEventProc(KEY_EVENT_RECORD ker, char *buf, DWORD max,  DWORD *ret)
 {
-    char buffer[400];
-    DWORD rd;
-    printf("Key event: ");
+    DWORD i;
 
-    if(ker.bKeyDown)
-        printf("key pressed\n");
-    else printf("key released\n");
+    if (ker.dwControlKeyState & CAPSLOCK_ON )
+    {
 
-    if (!ReadConsoleA(hStdin, buffer, sizeof(buffer) - 1, &rd, NULL)) {
-            ErrorExit("ReadConsoleA");
-	   }
-	buffer[rd] = 0;
-
+    }
+    if (ker.dwControlKeyState & ENHANCED_KEY )
+    {
+        
+    }
+    if (ker.dwControlKeyState & LEFT_ALT_PRESSED )
+    {
+        
+    }
+    if (ker.dwControlKeyState & LEFT_CTRL_PRESSED )
+    {
+        if (ker.wVirtualKeyCode == 'C') {
+            CtrlHandler(CTRL_C_EVENT);
+        }   
+    }
+    if (ker.dwControlKeyState & NUMLOCK_ON )
+    {
+        
+    }
+    if (ker.dwControlKeyState & RIGHT_ALT_PRESSED )
+    {
+        
+    }
+    if (ker.dwControlKeyState & RIGHT_CTRL_PRESSED )
+    {
+        
+    }
+    if (ker.dwControlKeyState & SCROLLLOCK_ON )
+    {
+        
+    }
+    if (ker.dwControlKeyState & SHIFT_PRESSED )
+    {
+        
+    }
+    if(ker.bKeyDown) {
+        for (i = 0; i < ker.wRepeatCount && (*ret) < (max-1); i++) {
+            buf[*ret] = ker.uChar.AsciiChar;
+            *ret = *ret + 1;
+        }
+        switch (ker.wVirtualKeyCode) {
+        case VK_BACK:
+        case VK_TAB:
+        // TODO
+            break;
+        }
+    }
+    else  {
+        //printf("key released\n");
+    }
 }
+
+// https://learn.microsoft.com/en-us/windows/console/mouse-event-record-str
 
 VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
 {
@@ -262,13 +350,16 @@ VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
 
             if(mer.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED)
             {
-                printf("left button press \n");
+                // x an y start from 0
+                printf("left button press %d %d\n", mer.dwMousePosition.X, mer.dwMousePosition.Y);
             }
             else if(mer.dwButtonState == RIGHTMOST_BUTTON_PRESSED)
             {
                 printf("right button press \n");
             }
-            else
+            else if (mer.dwButtonState == 0) {
+                    printf("button release\n");
+            } else
             {
                 printf("button press\n");
             }
@@ -280,7 +371,7 @@ VOID MouseEventProc(MOUSE_EVENT_RECORD mer)
             printf("horizontal mouse wheel\n");
             break;
         case MOUSE_MOVED:
-            printf("mouse moved\n");
+            printf("mouse moved %d %d\n", mer.dwMousePosition.X, mer.dwMousePosition.Y);
             break;
         case MOUSE_WHEELED:
             printf("vertical mouse wheel\n");
@@ -306,6 +397,7 @@ BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
     case CTRL_C_EVENT:
         printf("Ctrl-C event\n\n");
         Beep(750, 300);
+        quit();
         return TRUE;
 
         // CTRL-CLOSE: confirm that the user wants to exit.
@@ -335,39 +427,106 @@ BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
     }
 }
 
-int main(void)
-{
-    if (SetConsoleCtrlHandler(CtrlHandler, TRUE))
+var clipboard_set(var txt, var len) 
+{ 
+    wchar_t  *lptstrCopy; 
+    static HGLOBAL hglbCopy = 0; 
+    var unilen;
+ 
+    if (!OpenClipboard(0)) 
+        return -1; 
+    unilen = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        (void*)txt,
+        len,
+        (void*)0,
+        0 
+        );
+    if (unilen < 1) { 
+        CloseClipboard(); 
+        return -2; 
+    }  
+    EmptyClipboard(); 
+    if (hglbCopy) {
+        GlobalFree(hglbCopy);
+    }
+    hglbCopy = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * 4); 
+    if (hglbCopy == NULL) { 
+        CloseClipboard(); 
+        return -2; 
+    } 
+    lptstrCopy = GlobalLock(hglbCopy); 
+    
+    if (!MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        (void*)txt,
+        len,
+        lptstrCopy,
+        unilen
+        )
+        )
     {
-        printf("\nThe Control Handler is installed.\n");
-        printf("\n -- Now try pressing Ctrl+C or Ctrl+Break, or");
-        printf("\n    try logging off or closing the console...\n");
-        printf("\n(...waiting in a loop for events...)\n\n");
+        CloseClipboard(); 
+        return -1; 
+    }
+    lptstrCopy[unilen] = 0;
+    GlobalUnlock(hglbCopy); 
+    SetClipboardData(CF_UNICODETEXT, hglbCopy);   
+    CloseClipboard(); 
+    return 0; 
+}
 
-        while (1) {}
+
+var clipboard_get()
+{
+    static char *buffer = NULL;
+    wchar_t *unistr;
+    HANDLE clip;
+    int len;
+
+    
+    if (buffer) {
+        free(buffer);
+        buffer = NULL;
     }
-    else
-    {
-        printf("\nERROR: Could not set control handler");
-        return 1;
+
+    if (!OpenClipboard(0)) 
+        return (var)""; 
+        
+    clip = GetClipboardData(CF_UNICODETEXT);
+    if (!clip) {
+         CloseClipboard();
+         return (var)""; 
     }
-    return 0;
+    
+    unistr = (wchar_t*)GlobalLock(clip);
+    if (!unistr) {
+         CloseClipboard();
+         return (var)""; 
+    }
+    
+    len = WideCharToMultiByte(CP_UTF8, 0, unistr, -1, NULL,  0, NULL, NULL);
+    
+    buffer = malloc(len + 2);
+    
+    if (buffer && (len > 0)) {
+        len = WideCharToMultiByte(CP_UTF8, 0, unistr, -1, buffer,  len + 1, NULL, NULL);
+        buffer[len] = 0;
+    } else if (buffer) {
+        buffer[0] = 0;
+    }
+    GlobalUnlock(clip);
+    CloseClipboard();
+    return (var)buffer;
 }
 
 #else /*_WIN32 */
 struct termios orig_termios;
 struct sigaction old_action;
 
-var term_deinit()
-{
-	printf("\x1B[?1000l\x1B[?1003l\x1B[?1015l\x1B[?1006l"); 
-	printf("\x1B[?1049l\x1B[r"); 
-	fflush(stdout);
-	tcsetattr(0, TCSANOW, &orig_termios);
-	/*system("tset");*/
-	printf("\n");
-	return 0;
-}
+
 
 void sigint_handler(int sig_no)
 {
@@ -387,7 +546,7 @@ var term_init(var a)
     	sigaction(SIGINT, &action, &old_action);
 	tcgetattr(0, &orig_termios);
     	memcpy(&new_termios, &orig_termios, sizeof(new_termios));
-    	atexit((void(*)())(*term_deinit));
+    atexit((void(*)())(*term_deinit));
 	new_termios.c_lflag &= ~(ICANON|ECHO);
 	new_termios.c_cc[VMIN] = 1;
     	tcsetattr(0, TCSANOW, &new_termios);
@@ -447,13 +606,29 @@ var term_wait(var a, var timeout)
 
 #endif /* _WIN32 */
 
+var term_deinit()
+{
+	printf("\x1B[?1000l\x1B[?1003l\x1B[?1015l\x1B[?1006l"); 
+	printf("\x1B[?1049l\x1B[r"); 
+	fflush(stdout);
+#ifdef _WIN32
+    SetConsoleMode(hStdin, fdwSaveOldMode);
+    SetConsoleMode(hStdout, fdwSaveOldModeOut);
+#else
+	tcsetattr(0, TCSANOW, &orig_termios);
+	/*system("tset");*/
+#endif
+	printf("\n");
+	return 0;
+}
+
 var run(var a)
 {
 	return system((char*)a);
 }
 
 
-var quit()
+var quit(void)
 {
 	term_deinit();
 	exit(0);

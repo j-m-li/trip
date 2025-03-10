@@ -2683,7 +2683,8 @@ void k_load(struct trip *st, char *s)
 	st->pos = 0;
 	st->end = file_size((var)buf);
 	if (st->end < 1 || st->nb_files >= MAX_MEMBER) {
-		error("caonot open file", st);
+		printf(">> %s\n", buf);
+		error("cannot open file", st);
 	}
 	st->buf = (char*)file_load((var)buf, 0, st->end);
 	if (st->nb_files < 1) {
@@ -2740,6 +2741,14 @@ void k_include(struct trip *st)
 var (*builtin(struct trip *st, char *id, int *argc))()
 {
 	switch(id[0]) {
+	case 'c':
+		if (!id_cmp(id, "clipboard_set")) {
+			*argc = 2;
+			return (var(*)())clipboard_set;
+		} else if (!id_cmp(id, "clipboard_get")) {
+			*argc = 0;
+			return (var(*)())clipboard_get;
+		}
 	case 'f':
 		if (!id_cmp(id, "file_size")) {
 			*argc = 1;
