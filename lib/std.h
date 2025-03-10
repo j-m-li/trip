@@ -604,6 +604,16 @@ var term_wait(var a, var timeout)
 
 }
 
+var clipboard_set(var txt, var len) 
+{
+	return 0;
+}
+
+var clipboard_get()
+{
+	return (var)"";
+}
+
 #endif /* _WIN32 */
 
 var term_deinit()
