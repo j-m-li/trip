@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "folder.h"
+
 var quit(void);
 var term_deinit();
 
@@ -32,11 +34,15 @@ var flush()
 
 var print(var txt)
 {
+	if (!txt) {
+		printf("(nullptr)");
+		return -1;
+	}
 	printf("%s", (char*)txt);
 	return 0;
 }
 
-var printb(var len, var buf)
+var printb(var buf, var len)
 {
 #ifdef _WIN32
 	WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), 
@@ -45,6 +51,25 @@ var printb(var len, var buf)
 	fwrite((void*)buf, len, 1, stdout);
 #endif
 	return 0;
+}
+
+
+var file_delete(var path)
+{
+#ifdef _WIN32
+	return DeleteFileA((char*)path) == 0;
+#else
+	return unlink((char*)path);
+#endif
+}
+
+var file_rename(var src, var dest)
+{
+#ifdef _WIN32
+	return MoveFileA((char*)src, (char*)dest) == 0;
+#else
+	return rename((char*)src, (char*)dest);
+#endif
 }
 
 
@@ -87,22 +112,93 @@ var file_load(var path, var offset, var size)
 	return (var)buf;
 }
 
-var file_save(var path, var offset, var size, var buf)
+var file_save(var path, var offset, var buf, var size)
 {
 	FILE *fp;
 	var ret;
-	fp = fopen((char*)path, "rb+");
+	char *mode1 = "rb+";
+	char *mode2 = "wb+";
+	if (offset < 0) {
+		mode1 = "wb";	
+	}
+	fp = fopen((char*)path, mode1);
 	if (!fp) {
-		fp = fopen((char*)path, "wb+");
+		fp = fopen((char*)path, mode2);
 		if (!fp) {
 			return -1;
 		}
 	}
-	fseek(fp, offset, SEEK_SET);
+	if (offset > 0) {
+		if (fseek(fp, offset, SEEK_SET)) {
+			fseek(fp, 0, SEEK_SET);
+		}
+	}
 	ret = fwrite((void*)buf, 1, size, fp);
 	fclose(fp);
 	return ret;
 }
+
+var folder_create(var path)
+{
+	return mkfldr((char*)path);
+}
+
+var folder_delete(var path)
+{
+	return rmfldr((char*)path);
+}
+
+var buffer__append(var b, var data, var len) 
+{
+	var *buf = (var*)b;
+	var end;
+	if (buf[0] == 0) {
+		buf[0] = (var)malloc(4096);
+		buf[1] = 0;
+		buf[2] = 4096;
+	}
+	end = buf[1] + len;
+	if ((end+2) >= buf[2]) {
+		buf[2] = end + 4096;
+		buf[0] = (var)realloc((void*)buf[0], buf[2]);
+	}
+	memcpy((char*)(buf[0] + buf[1]), (char*)data, len);
+	buf[1] = end;
+	return 0;
+}
+
+var folder_list(var path)
+{
+	FOLDER *f;
+	char *entry;
+	var buf[3];
+	buf[0] = 0;
+	f = openfldr((char*)path);
+	if (!f) {
+		return 0;
+	}
+	entry = readfldr(f);
+	if (entry) {
+		buffer__append((var)buf, (var)entry, strlen(entry));
+	}
+	while (entry) {
+		entry = readfldr(f);
+		if (!entry) {
+			break;
+		}
+		buffer__append((var)buf, (var)"\n", 1);
+		buffer__append((var)buf, (var)entry, strlen(entry));
+	}
+	closefldr(f);
+	if (buf[0]) {
+		((char*)buf[0])[buf[1]] = '\0';
+	} else {
+		return (var)strdup("");
+	}
+	return buf[0];
+}
+
+
 
 var str_cmp(var a, var b)
 {
@@ -523,10 +619,9 @@ var clipboard_get()
 }
 
 #else /*_WIN32 */
+
 struct termios orig_termios;
 struct sigaction old_action;
-
-
 
 void sigint_handler(int sig_no)
 {
@@ -546,7 +641,7 @@ var term_init(var a)
     	sigaction(SIGINT, &action, &old_action);
 	tcgetattr(0, &orig_termios);
     	memcpy(&new_termios, &orig_termios, sizeof(new_termios));
-    atexit((void(*)())(*term_deinit));
+	atexit((void(*)())(*term_deinit));
 	new_termios.c_lflag &= ~(ICANON|ECHO);
 	new_termios.c_cc[VMIN] = 1;
     	tcsetattr(0, TCSANOW, &new_termios);
@@ -604,13 +699,31 @@ var term_wait(var a, var timeout)
 
 }
 
+/* https://www.uninformativ.de/blog/postings/2017-04-02/0/POSTING-en.html
+https://blog.desdelinux.net/en/send-data-to-kde-clipboard-from-terminal/
+   Linux, what a mess...
+ */
 var clipboard_set(var txt, var len) 
 {
+	mkfldr("~/.local/share/os-3o3/");
+	file_save((var)"~/.local/share/os-3o3/clipboard.txt", -1, len, txt);
+	system("xclip -i ~/.local/share/os-3o3/clipboard.txt");
 	return 0;
 }
 
 var clipboard_get()
 {
+	static var buf = 0;
+	var f = (var)"~/.local/share/os-3o3/clipboard.txt";
+	mkfldr("~/.local/share/os-3o3/");
+	system("xclip -o ~/.local/share/os-3o3/clipboard.txt");
+	if (buf) {
+		free((void*)buf);
+	}
+	buf = file_load(f, 0, file_size(f));
+	if (buf) {
+		return buf;
+	}
 	return (var)"";
 }
 
@@ -645,4 +758,5 @@ var quit(void)
 	return -1;
 }
 
-
+#include "folder.c"
+#include "socket.c"

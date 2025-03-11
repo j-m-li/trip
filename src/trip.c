@@ -1431,11 +1431,7 @@ int expression1(struct trip *st, int prec, int spc)
 	var a, b;
 	char *id;
 	var *arr;
-
-	int has_primary = 1;
-	if (spc == 0) {
-		has_primary = 0;
-	}
+	int has_primary = 0; 
 	ok = 0;
 	while (st->pos < st->end && !ok) {
 		if (st->mode == MODE_INTERP) {
@@ -1558,6 +1554,7 @@ int expression1(struct trip *st, int prec, int spc)
 					expression1(st, 13 + 1, spc);
 				}
 			}
+			has_primary = 1;
 			break;
 		case '*':
 		case '/':
@@ -1585,6 +1582,7 @@ int expression1(struct trip *st, int prec, int spc)
 				printf("%c", c); 
 				expression1(st, 14 + 1, spc);
 			}
+			has_primary = 0;
 			break;
 		case ' ':
 		case '\t':
@@ -1628,7 +1626,7 @@ int expression1(struct trip *st, int prec, int spc)
 				if (st->mode == MODE_INTERP) {
 				} else {
 					printf("%c", c); 
-				}
+				} // FIXME
 				st->pos++;
 			} else {
 				has_primary = 1;
@@ -2203,7 +2201,7 @@ void k_delete(struct trip *st)
 		if (st->mode == MODE_INTERP) {
 			free((void*)get_data(st, NULL, id, 0));
 		} else {
-			printf("free((void*)%s);\n", id);
+			printf("if (%s){free((void*)%s);}\n", id,id);
 		}
 	}
 }
@@ -2741,6 +2739,12 @@ void k_include(struct trip *st)
 var (*builtin(struct trip *st, char *id, int *argc))()
 {
 	switch(id[0]) {
+	case 'b':
+		if (!id_cmp(id, "buffer__append")) {
+			*argc = 3;
+			return (var(*)())buffer__append;
+		}
+	       	break;	
 	case 'c':
 		if (!id_cmp(id, "clipboard_set")) {
 			*argc = 2;
@@ -2759,6 +2763,21 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		} else if (!id_cmp(id, "file_load")) {
 			*argc = 3;
 			return (var(*)())file_load;
+		} else if (!id_cmp(id, "file_rename")) {
+			*argc = 2;
+			return (var(*)())file_rename;
+		} else if (!id_cmp(id, "file_delete")) {
+			*argc = 1;
+			return (var(*)())file_delete;
+		} else if (!id_cmp(id, "folder_list")) {
+			*argc = 1;
+			return (var(*)())folder_list;
+		} else if (!id_cmp(id, "folder_create")) {
+			*argc = 1;
+			return (var(*)())folder_create;
+		} else if (!id_cmp(id, "folder_delete")) {
+			*argc = 1;
+			return (var(*)())folder_delete;
 		} else if (!id_cmp(id, "file_save")) {
 			*argc = 4;
 			return (var(*)())file_save;

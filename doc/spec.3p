@@ -13,6 +13,10 @@ bytes array_of_bytes {
 	65,66,67,68,69,0
 }
 
+func four_args (a,b,c,d)
+{
+	return 0
+}
 
 class my_struct {
 field one
@@ -41,10 +45,11 @@ method print_this () {
 	print "=0A"
 }
 
+
 # args[0]: this
 # args[1]: increment value
 method do_something (inc) {
-	var s
+	var s, tmp
 	set next next + inc
 	print "=0A"
 	print10 next
@@ -61,11 +66,18 @@ method do_something (inc) {
 	print " "
 	print10 {str_cmp four "four! "}
 	print "=0A";
-	print {file_load "README.md" 0 {file_size "README.md"}}
-	file_save "bin/test.txt" 0 5 "hello"
-	file_save "bin/test.txt" 7 1 "!"
+	set tmp {file_load "README.md" 0 {file_size "README.md"}}
+	print tmp
+	delete tmp
+	set tmp {folder_list(".")}
+	print "FOLDERRRR:=0A"
+	print tmp
+	delete tmp
+	four_args "bin/test.txt" -1 "hello" 3
+	file_save "bin/test.txt" -1 "hello" 3
+	file_save "bin/test.txt" 7 "!" 1
 
-	set s {str_dup "Yo!"}
+	set s {str_dup "=0A=0AYo!"}
 	print s
 	delete s
 	print array_of_bytes
