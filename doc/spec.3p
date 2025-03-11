@@ -56,26 +56,26 @@ method do_something (inc) {
 	print "=0A"
 	this.print_this
 
-	set s {file_size "README.md"}
+	set s {file__size "README.md"}
 	print "=0A"
 	print10 s
 	print "=0A"
-	print10 {file_size "README.md"}
+	print10 {file__size "README.md"}
 	print "=0A"
 	print four
 	print " "
 	print10 {str_cmp four "four! "}
 	print "=0A";
-	set tmp {file_load "README.md" 0 {file_size "README.md"}}
+	set tmp {file__load "README.md" 0 {file__size "README.md"}}
 	print tmp
 	delete tmp
-	set tmp {folder_list(".")}
+	set tmp {folder__list(".")}
 	print "FOLDERRRR:=0A"
 	print tmp
 	delete tmp
 	four_args "bin/test.txt" -1 "hello" 3
-	file_save "bin/test.txt" -1 "hello" 3
-	file_save "bin/test.txt" 7 "!" 1
+	file__save "bin/test.txt" -1 "hello" 3
+	file__save "bin/test.txt" 7 "!" 1
 
 	set s {str_dup "=0A=0AYo!"}
 	print s

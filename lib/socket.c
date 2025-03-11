@@ -1,18 +1,7 @@
-#ifdef _WIN32
-#include <winsock2.h>
-#include <stdio.h>
-#pragma comment(lib, "Ws2_32.lib")
-#else
-       #include <netdb.h>
-       #include <stdio.h>
-       #include <stdlib.h>
-       #include <string.h>
-       #include <sys/socket.h>
-       #include <sys/types.h>
-       #include <unistd.h>
-#endif
 
-       #define BUF_SIZE 5000
+#include "socket.h"
+
+#define BUF_SIZE 5000
 
 var socket__new(var host, var port)
 {
@@ -124,3 +113,4 @@ WSACleanup();
        }
 
 #undef BUF_SIZE 
+

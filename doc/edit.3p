@@ -88,14 +88,14 @@ func toolbar (term)
 }
 
 func loop (term) {
-	term_wait term 10
+	term__wait term 10
 	if term[3] ?
 		1 {
 			#print10 term[4]
 			#print "=0A"
 			print term[5]
 			#print "=0A"
-			print {clipboard_get}
+			print {clipboard__get}
 			
 		},
 		<> {
@@ -110,8 +110,8 @@ func startup (argc, argv) {
 	var x
 	var term
 
-	set term {new array 10}
-	term_init term
+	set term {new term}
+	term__init term
 
 	init term
 
@@ -126,7 +126,7 @@ func startup (argc, argv) {
 
 	flush 
 
-	clipboard_set "héllo...." 9
+	clipboard__set "héllo...." 9
 
 	set x 0
 	while x ? 0 { 	# loop while x greater than 0

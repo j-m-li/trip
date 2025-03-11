@@ -2594,7 +2594,6 @@ void k_while(struct trip *st)
 		if (st->continue_ || st->break_ || st->else_ ||
 				st->return_) 
 		{
-		printf("BBBB %d\n", st->pos);
 			st->pos = pos;
 			skip_expression(st);
 			whitespaces(st);
@@ -2603,7 +2602,6 @@ void k_while(struct trip *st)
 			}
 			st->continue_ = 0;
 			st->break_ = 0;
-		printf("BBBBii %d %c\n", st->pos, st->buf[st->pos]);
 		}
 	} else {
 		expression(st);
@@ -2679,12 +2677,12 @@ void k_load(struct trip *st, char *s)
 	obuf = st->buf;
 	oend = st->end;
 	st->pos = 0;
-	st->end = file_size((var)buf);
+	st->end = file__size((var)buf);
 	if (st->end < 1 || st->nb_files >= MAX_MEMBER) {
 		printf(">> %s\n", buf);
 		error("cannot open file", st);
 	}
-	st->buf = (char*)file_load((var)buf, 0, st->end);
+	st->buf = (char*)file__load((var)buf, 0, st->end);
 	if (st->nb_files < 1) {
 		st->files[st->nb_files].start = 0; 
 	} else {
@@ -2746,41 +2744,41 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		}
 	       	break;	
 	case 'c':
-		if (!id_cmp(id, "clipboard_set")) {
+		if (!id_cmp(id, "clipboard__set")) {
 			*argc = 2;
-			return (var(*)())clipboard_set;
-		} else if (!id_cmp(id, "clipboard_get")) {
+			return (var(*)())clipboard__set;
+		} else if (!id_cmp(id, "clipboard__get")) {
 			*argc = 0;
-			return (var(*)())clipboard_get;
+			return (var(*)())clipboard__get;
 		}
 	case 'f':
-		if (!id_cmp(id, "file_size")) {
+		if (!id_cmp(id, "file__size")) {
 			*argc = 1;
-			return (var(*)())file_size;
+			return (var(*)())file__size;
 		} else if (!id_cmp(id, "flush")) {
 			*argc = 0;
 			return (var(*)())flush;
-		} else if (!id_cmp(id, "file_load")) {
+		} else if (!id_cmp(id, "file__load")) {
 			*argc = 3;
-			return (var(*)())file_load;
-		} else if (!id_cmp(id, "file_rename")) {
+			return (var(*)())file__load;
+		} else if (!id_cmp(id, "file__rename")) {
 			*argc = 2;
-			return (var(*)())file_rename;
-		} else if (!id_cmp(id, "file_delete")) {
+			return (var(*)())file__rename;
+		} else if (!id_cmp(id, "file__delete")) {
 			*argc = 1;
-			return (var(*)())file_delete;
-		} else if (!id_cmp(id, "folder_list")) {
+			return (var(*)())file__delete;
+		} else if (!id_cmp(id, "folder__list")) {
 			*argc = 1;
-			return (var(*)())folder_list;
-		} else if (!id_cmp(id, "folder_create")) {
+			return (var(*)())folder__list;
+		} else if (!id_cmp(id, "folder__create")) {
 			*argc = 1;
-			return (var(*)())folder_create;
-		} else if (!id_cmp(id, "folder_delete")) {
+			return (var(*)())folder__create;
+		} else if (!id_cmp(id, "folder__delete")) {
 			*argc = 1;
-			return (var(*)())folder_delete;
-		} else if (!id_cmp(id, "file_save")) {
+			return (var(*)())folder__delete;
+		} else if (!id_cmp(id, "file__save")) {
 			*argc = 4;
-			return (var(*)())file_save;
+			return (var(*)())file__save;
 		}
 		break;
 	case 'p':
@@ -2810,18 +2808,18 @@ var (*builtin(struct trip *st, char *id, int *argc))()
 		}
 		break;
 	case 't':
-		if (!id_cmp(id, "term_wait")) {
+		if (!id_cmp(id, "term__wait")) {
 			*argc = 2;
-			return (var(*)())term_wait;
-		} else if (!id_cmp(id, "term_init")) {
+			return (var(*)())term__wait;
+		} else if (!id_cmp(id, "term__init")) {
 			*argc = 1;
-			return (var(*)())term_init;
-		} else if (!id_cmp(id, "term_deinit")) {
+			return (var(*)())term__init;
+		} else if (!id_cmp(id, "term__deinit")) {
 			*argc = 0;
-			return (var(*)())term_deinit;
-		} else if (!id_cmp(id, "term_size")) {
+			return (var(*)())term__deinit;
+		} else if (!id_cmp(id, "term__size")) {
 			*argc = 1;
-			return (var(*)())term_size;
+			return (var(*)())term__size;
 		}
 		break;
 	}

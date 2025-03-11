@@ -7,7 +7,7 @@ rem https://stackoverflow.com/questions/17510688/single-script-to-run-in-both-wi
 echo "==========  TRIP build ${SHELL} ================="
 DIR=$(dirname "$0")
 (mkdir -p ${DIR}/bin;)
-(cd ${DIR}/bin;cc ../src/trip -o trip)
+(cd ${DIR}/bin;cc ../src/trip.c -o trip)
 (cd ${DIR}/bin;./trip -s ../doc/edit.3p)
 exit $?
 :CMDENTRY
