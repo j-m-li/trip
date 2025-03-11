@@ -54,6 +54,12 @@ var printb(var buf, var len)
 	return 0;
 }
 
+struct buffer {
+	var data;
+	var length;
+	var alloced;
+};
+
 var buffer__append(var b, var data, var len) 
 {
 	var *buf = (var*)b;

@@ -426,16 +426,16 @@ var term__init(var a)
     	memcpy(&new_termios, &orig_termios, sizeof(new_termios));
 	atexit((void(*)())(*term__deinit));
 	new_termios.c_lflag &= ~(ICANON|ECHO);
-	new_termios.c_cc[VMIN] = 1;
-    	tcsetattr(0, TCSANOW, &new_termios);
-		
+	new_termios.c_cc[VMIN] = 0;
+	new_termios.c_cc[VTIME] = 0;
+    	tcsetattr(0, TCSAFLUSH, &new_termios);
+	
 	term[0] = 0; /* private handler */
 	term[1] = 0; /* width */
 	term[2] = 0; /* height */
 	term[3] = 0; /* event type */
 	term[4] = 0; /* event data length */
        	term[5] = 0; /* event data */
-	printf("\x1B[?1003h\x1B[?1015h\x1B[?1006h"); /* Mouse trap all, urxvt, SGR1006 */	
 	fflush(stdout);
 	term__size(a);
 	return 0;
@@ -446,7 +446,7 @@ var terminal__input(var a)
 	ssize_t l;
 	var *term = (void*)a;
 	static char buffer[4096];
-	l = read(0, buffer, sizeof(buffer)-1);
+	l = fread(buffer, 1, sizeof(buffer)-1, stdin);
 	if (l < 1) {
 		return -1;
 	}
@@ -484,27 +484,48 @@ var term__wait(var a, var timeout)
 
 /* https://www.uninformativ.de/blog/postings/2017-04-02/0/POSTING-en.html
 https://blog.desdelinux.net/en/send-data-to-kde-clipboard-from-terminal/
-   Linux, what a mess...
+    what a mess...
  */
 var clipboard__set(var txt, var len) 
 {
-	
-	mkfldr("~/.local/share/os-3o3/");
-	file__save((var)"~/.local/share/os-3o3/clipboard.txt", -1, len, txt);
-	system("xclip -i ~/.local/share/os-3o3/clipboard.txt");
+	struct buffer path ={0};
+	char *cmd = "xclip -i ";
+	char *f = "/.local/share/os-3o3/";
+	char *cl = "clipboard.txt";
+	var home;
+	home = file__get_home();
+	buffer__append((var)&path, (var)cmd, strlen(cmd));
+	buffer__append((var)&path, home, strlen((char*)home));
+	buffer__append((var)&path, (var)f, strlen(f));
+	mkfldr((char*)path.data + strlen(cmd));
+	buffer__append((var)&path, (var)cl, strlen(cl));
+	file__save(path.data + strlen(cmd), -1, len, txt);
+	system((char*)path.data);
+	free((void*)path.data);
 	return 0;
 }
 
 var clipboard__get()
 {
-	static var buf = 0; // FIXME
-	var f = (var)"~/.local/share/os-3o3/clipboard.txt";
-	mkfldr("~/.local/share/os-3o3/");
-	system("xclip -o ~/.local/share/os-3o3/clipboard.txt");
+	static var buf = 0;
+	struct buffer path ={0};
+	char *cmd = "xclip -o ";
+	char *f = "/.local/share/os-3o3/";
+	char *cl = "clipboard.txt";
+	var home;
+	home = file__get_home();
+	buffer__append((var)&path, (var)cmd, strlen(cmd));
+	buffer__append((var)&path, home, strlen((char*)home));
+	buffer__append((var)&path, (var)f, strlen(f));
+	mkfldr((char*)path.data + strlen(cmd));
+	buffer__append((var)&path, (var)cl, strlen(cl));
+	system((char*)path.data);
 	if (buf) {
 		free((void*)buf);
 	}
-	buf = file__load(f, 0, file__size(f));
+	buf = file__load(path.data + strlen(cmd), 0, 
+			file__size(path.data + strlen(cmd)));
+	free((void*)path.data);
 	if (buf) {
 		return buf;
 	}
