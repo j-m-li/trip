@@ -1,0 +1,518 @@
+
+# comment
+
+define MAX_NUM 20
+define EVENT_MOUSE 1
+define EVENT_KEYBOARD 2
+define EVENT_WINDOW 3
+define EVENT_DRAW 4
+define EVENT_UNFOCUS 5
+define EVENT_FOCUS 6
+define EVENT_TEXT 7
+
+class display {
+field term_
+field width_
+field height_
+field event_
+field cur_x_
+field cur_y_
+field mouse_x_
+field mouse_y_
+field mouse_btn_
+field n_ # csi numbered parameters
+field nb_n_
+field state_
+
+field widgets_
+field nb_widgets_
+field alloc_widgets_
+field focus_
+field focus_old_
+
+method flush()
+{
+	flush
+}
+
+method print(txt)
+{
+	print txt
+}
+
+method print10(n)
+{
+	print10 n
+}
+
+
+
+method printb(txt,len)
+{
+	printb txt len
+}
+
+method printw(txt,len,max) 
+{
+	var i,c,n
+	set i 0
+	set n 0
+	loop {
+		if i - max ? >~ {break};
+		if (n - len) ? >~ {break};
+		set c {peek txt n}
+		if c ? 0 {break};
+		if c - (128+64) ? < {
+			if c - 128 ? >~ {
+				# UTF-8 synchro error
+			};
+			set n n + 1
+		}, <> {
+			# FIXME Unicode combining characters 
+			if c - (128+64+32)  ? < {
+				if {peek txt (n+1)} ? 0 {break};
+				set n n + 2
+			}, <> {
+				if c - (128+64+32+16)  ? < {
+					if {peek txt (n+1)} ? 0 {break};
+					if {peek txt (n+2)} ? 0 {break};
+					set n n + 3
+				}, <> {
+					if {peek txt (n+1)} ? 0 {break};
+					if {peek txt (n+2)} ? 0 {break};
+					if {peek txt (n+3)} ? 0 {break};
+					set n n + 4
+				};
+			};
+		};
+		set i i + 1
+	};
+	this.printb txt n
+	if i - max ? < {
+		this.print "=1B["
+		this.print10 (max - i)
+		this.print "X"
+	};
+	return i
+}
+
+method add(wid)
+{
+	var a,i
+	if (alloc_widgets_ - nb_widgets_) ? <~ {
+		set a {new array (alloc_widgets_ + 10)}
+		set i 0
+		loop {
+			if i - nb_widgets_ ? >~ {break};
+			set a[i] widgets_[i]
+			set i i + 1
+		};
+		delete widgets_
+		set widgets_ a
+		set alloc_widgets_ alloc_widgets_ + 10
+	};
+	set widgets_[nb_widgets_] wid
+	set nb_widgets_ nb_widgets_ + 1
+	this.set_focus wid
+}
+
+method moveto(x,y)
+{
+	this.print "=1B["
+	this.print10 (y+1)
+	this.print ";"
+	this.print10 (x+1)
+	this.print "f"
+}
+
+method color(front, back)
+{
+	this.print "=1B["
+	this.print10 (front + 30)
+	this.print ";"
+	this.print10 (back + 40)
+	this.print "m"
+}
+
+method bold()
+{
+	this.print "=1B[1m"
+}
+
+method regular()
+{
+	this.print "=1B[22m"
+}
+
+method nounderline()
+{
+	this.print "=1B[24m"
+}
+
+method underline()
+{
+	this.print "=1B[4m"
+}
+
+method normal()
+{
+	this.print "=1B[0m"
+}
+
+method clear()
+{
+	this. color 7 0 
+	this.print "=1B[2J"
+}
+
+method query_pos()
+{
+	ref term term1
+	set term1 term_
+	this.print "=1B[6n"
+	this.flush
+	term1.wait 10
+	loop {
+		if term1[3] ? <> {break};
+		term1.wait 10
+	};
+	this.event term1[3] term1[4] term1[5]
+}
+
+
+method init()
+{
+	ref term term1
+	set n_ {new array MAX_NUM}
+	set nb_n_ 0
+	set state_ -1
+
+	set term_ {term1.new}
+	set term1 term_
+
+	this.print "=1B[!p"
+	this.print "=1B[?1049h"
+	this.print "=1B[?1003h"
+	this.print "=1B[?1015h"
+	this.print "=1B[?1006h"
+	this.print "=1B["
+	this.print10 1 
+	this.print ";"
+	this.print10 ({term1.height}-1)
+	this.print "r"
+	this.print "=1B]0;https://3o3.org=07"
+
+	set cur_x_ 0
+	set cur_y_ 0
+
+	set widgets_ {new array 10}
+	set nb_widgets_ 0
+	set alloc_widgets_ 10
+
+	set focus_old_ 0
+	set focus_ 0
+
+	set height_ {term1.height}
+	set width_ {term1.width}
+	this.flush 
+	this.moveto 0 0
+	this.flush 
+
+}
+
+method read_num(txt)
+{
+	var n,c,num
+	set n 0
+	set c {peek txt n}
+	set num 0
+	loop {
+		if c ? 0 {break};
+		if (c - '0') ? >~ {
+			if (c - '9') ?  <~ {
+				set num ((num * 10) + c - '0')
+			}, <> {
+				break
+			};
+		}, <> {
+			break
+		};
+		set n (n + 1)
+		set c {peek txt n}
+	};
+	if n ? > {
+		set n_[nb_n_] num
+		set nb_n_ (nb_n_ + 1)
+	};
+	return n
+}
+
+method skip(txt)
+{
+	var n,c
+	set n 1
+	set c {peek txt n}
+	loop {
+		if c ? 0 {break};
+		if (c - '@') ?  < {
+			set n (n + 1)
+			break
+		}, 
+		>~ {
+			if (c - '~') ? > {
+				set n (n + 1)
+				break
+			};
+		};
+		set n (n + 1)
+		set c {peek txt n}
+	};
+	return n
+}
+
+method set_focus(wi)
+{
+	set focus_ wi
+}
+
+method mouse_hide()
+{
+}
+
+method mouse_show()
+{
+	if (mouse_y_ - height_ + 2) ? < {
+		this.moveto mouse_x_  mouse_y_
+	}, >~ {
+		this.moveto mouse_x_  (height_ - 2)
+	};
+}
+
+method arrow_event(key)
+{
+	if key ? 'A' {
+		set cur_y_ (cur_y_ - 1)
+	}, 'B' {
+		set cur_y_ (cur_y_ + 1)
+	}, 'C' {
+		set cur_x_ (cur_x_ + 1)
+	}, 'D' {
+		set cur_x_ (cur_x_ - 1)
+	};
+	if (cur_y_) ? < {
+		set cur_y_ 0
+	};
+	if (cur_y_ - height_ + 2) ? >~ {
+		set cur_y_ (height_ - 2)
+	};
+	if (cur_x_) ? < {
+		set cur_x_ 0
+	};
+	if (cur_x_ - width_) ? >~ {
+		set cur_x_ (width_ - 1)
+	};
+
+	set event_ EVENT_KEYBOARD
+	this.dispatch EVENT_KEYBOARD cur_x_ cur_y_ 0
+	
+}
+
+method mouse_event(release)
+{
+
+	if (nb_n_ - 3) ? <> {
+		return 0
+	};
+	this.mouse_hide
+	set event_ EVENT_MOUSE
+	set mouse_btn_ n_[0] + (1000 * release)
+	set mouse_x_ (n_[1] - 1)
+	set mouse_y_ (n_[2] - 1)
+	this.mouse_show
+	this.dispatch EVENT_MOUSE mouse_x_ mouse_y_ mouse_btn_
+	return 0;
+}
+
+method csi(txt)
+{
+	var n,c,l,state
+	set n 1
+	set c {peek txt n}
+	set nb_n_ 0
+	set state 0
+
+	print txt
+	print "  "
+	flush
+	loop {
+		if c ? 0 {break};
+		set l {this.read_num (txt + n)}
+			this.printb (txt+n) 1
+		if l ?  0 {
+			if c ?  ';' {
+			}, ':' {
+			}, '<' {
+				set state '<'
+			}, 'A' {
+				this.arrow_event c
+			}, 'B' {
+				this.arrow_event c
+			}, 'C' {
+				this.arrow_event c
+			}, 'D' {
+				this.arrow_event c
+			}, 'm' {
+				if state ?  '<' {
+					this.mouse_event 1
+				};
+				set state 0
+			}, 'M' {
+				if state ? '<' {
+					this.mouse_event 0
+				};
+				set state 0
+	
+			}, 'R' {
+				this.print "R:"
+				this.print10 nb_n_
+				this.flush
+			}, <> {
+				set l {this.skip (txt+n)}
+			};
+			set n (n + 1 + l)
+		}, <> {
+			set n (n + l)
+		};
+		if state ? 0 {
+			set nb_n_ 0
+		};
+		set c {peek txt n}
+	};
+	return n
+}
+
+method process(txt)
+{
+	ref term term1
+	set term1 term_
+	var i,c,nxt,n
+	if txt ? 0 { return 0 };
+	set i  0
+	set c {peek txt 0}
+	loop {
+		if c ? 0 {break};
+		set nxt {peek txt (i+1)}
+		set n 0
+		if c ? 
+		27 {
+			if nxt ? 
+			0 {
+				this.dispatch EVENT_KEYBOARD -1 -1 27
+			}, '[' {
+				print "=0A"
+				set n {this.csi (txt+i+1)}
+			}, <> {
+				set n {this.skip (txt+i+1)}
+			};		
+		},
+		<> {
+			this.dispatch EVENT_KEYBOARD -1 -1 {peek txt i}
+			#this.printb (txt + i) 1
+			#this.flush
+		};
+		if n ? 0 {
+			set i (i + 1)
+		}, <> {
+			set i (i + n + 1)
+		};
+		set c {peek txt i}
+	};	
+	return 0;
+}
+
+method width()
+{
+	return width_
+}
+
+method height()
+{
+	return height_
+}
+
+method event(id,len,data)
+{
+	if id ?
+	1 {
+		return {this.process data}
+		this.flush
+	},
+	<> {
+		return -1
+	};
+	return 0
+}
+
+method dispatch(type, x, y, data)
+{
+	var i,r
+	ref widget wi
+	set i 0
+	set focus_old_ focus_
+
+	if type ? EVENT_WINDOW {
+		this.clear
+	};
+	if (focus_) ? <> {
+		set wi focus_old_
+		set r {wi.event type x y data}
+		this.moveto cur_x_ cur_y_
+		if r ? > {
+			set i nb_widgets_ # skip all
+		};
+	};
+	loop {
+		if i - nb_widgets_ ? >~ {break};
+		set wi (widgets_[i])
+		if (wi - focus_old_) ? <> {
+			set r {wi.event type x y data}
+		};
+		set i (i + 1)
+		this.moveto cur_x_ cur_y_
+		if r ? > {
+			break
+		};
+	};
+	if (focus_old_ - focus_) ? <> {
+		if (focus_old_) ? <> {
+			set wi focus_old_
+			wi.event EVENT_UNFOCUS 0 0 focus_
+		};
+		if (focus_) ? <> {
+			set wi focus_
+			wi.event EVENT_FOCUS 0 0 focus_old_
+		};
+	};
+}
+
+method events() 
+{
+	ref term term
+	set term term_
+	if state_ ? -1 {
+		set state_ 0
+		this.dispatch EVENT_DRAW 0 0 0
+		this.flush
+	};
+	term.wait 10
+	if term[3] ? 0 {
+		return 0
+	};
+	this.event term[3] term[4] term[5]
+	this.dispatch EVENT_DRAW 0 0 0
+	this.flush
+	return 0
+}
+
+} # class display
+

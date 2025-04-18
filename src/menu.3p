@@ -1,0 +1,442 @@
+
+# comment
+
+class menu {
+field event_ # these fields are common with widget class
+
+field x_
+field y_
+field w_
+field h_
+field state_
+field win_
+field data_
+field damage_
+field cb_
+field cb_data_
+field item_
+field sub_
+field cmd_
+
+method init(me,dpy,x,y,w,h,e,dat)
+{
+	set x_ x
+	set y_ y
+	set w_ w
+	set h_ h
+	set state_ 0
+	set event_ e
+	set win_ dpy
+	set data_ dat
+	set damage_ 0
+	set sub_ 0
+	set cmd_ 0
+}
+
+method init_sub(cb,cb_data)
+{
+	var f
+	ref menu s
+	set sub_ {new menu}
+	set s sub_
+	set f s.menu__event
+	s.init s win_ 0 0 0 0 f "" 
+	s.set_callback cb cb_data
+}
+
+method nb_item(data)
+{
+	var i,n
+	set i 0
+	set n 0
+	loop {
+		if {peek data i} ? 0 {
+			break;
+		}, ';' {
+			set i i + 1
+			set n n + 1
+		}, <> {
+			set i i + 1
+		};
+	};
+	return n
+}
+
+#this pointer is invalid in this "method"
+method menu_create(d, cb, cb_data, data)
+{
+	var f,n
+	ref menu g
+	ref display dpy
+	set dpy d
+	set g {new menu}
+	set f g.menu__event
+	set n {this.nb_item data}
+	g.init g dpy 0 ({dpy.height}-1-n) 24 n f data
+	g.set_callback cb cb_data
+	dpy.add g
+	g.init_sub cb cb_data
+	return g
+}
+
+#this pointer is invalid in this "method"
+method menu__event(me,ev,x,y,data)
+{
+	ref menu s
+	set s me
+	return {s.event ev x y data}
+}
+
+
+method is_inside(x,y)
+{
+	if (x - x_) ? < {return 0};
+	if (y - y_) ? < {return 0};
+	if ((x_ + w_) - x) ? <~ {return 0};
+	if ((y_ + h_) - y) ? <~ {return 0};
+	return 1
+}
+
+method set_callback(cb, data)
+{
+	set cb_ cb
+	set cb_data_ data
+}
+
+method callback(state)
+{
+	var f
+	set f cb_
+	if f ? 0 {return 0};
+	f null cb_data_ (h_ - item_ - 1) data_ state
+	return 0
+}
+
+method hide()
+{
+	ref display dpy
+	set dpy win_
+	dpy.dispatch EVENT_WINDOW 0 0 1	 # damage all
+	if state_ ? <> {
+		set state_ 0
+		set damage_ 1
+		return 1
+	};
+	return 0
+}
+
+method shown() {
+	return state_
+}
+
+method show_sub()
+{
+	set item_ -1
+	set state_ 1
+}
+
+
+method get_cmd(data)
+{
+	var i,n,c
+	set i 0
+	if cmd_ ? 0 {
+		set cmd_ {new bytes 256}
+	};
+	set n 3
+	loop {
+		if {peek data 0} ? 0 {
+			break
+		}, '"' {
+			set data data + 1
+			set n n - 1
+			if n ? 0 {
+				break
+			};
+		}, <> {
+			set data data + 1
+		};
+	};
+	loop {
+		if i - 254 ? >~ {
+			break
+		};
+		set c {peek data 0}
+		if c ? 
+		0 '"' {
+			break
+		}, <> {
+			poke cmd_ i c
+			set i i + 1
+			set data data + 1
+		};
+	};
+
+	poke cmd_ i 0
+	return cmd_
+}
+
+method get_item(item,data)
+{
+	var i
+	set i 0
+	loop {
+		if i - item ? ~ {
+			break
+		}, < {
+			set i i + 1
+			loop {
+				if {peek data 0} ? 0 {
+					break
+				}, ';' {
+					set data data + 1
+					break
+				}, <> {
+					set data data + 1
+				};
+			};
+		};
+	};
+
+	loop {
+		if {peek data 0} ? 0 {
+			break
+		}, 9 ' ' {
+			set data data + 1
+		}, <> {
+			break
+		};
+	};
+	return data
+}
+
+
+method show(showit, sub)
+{
+	var n,f
+	ref display dpy
+	ref menu g
+	set dpy win_
+	set g sub_
+
+	if showit ? 0 {
+		if g ? <> {
+			g.hide
+		};
+		this.hide
+		return 0
+	}, 3 {
+		return 0
+	};
+	if sub ? 0 {
+		set damage_ 1
+		set state_ 1
+		set item_ -1
+		dpy.set_focus this
+	}, <> {
+		set n {this.nb_item sub}
+		set f g.menu__event
+		g.init g dpy (x_ + w_) (y_-n+item_+1) w_ n f sub
+		g.set_callback cb_ cb_data_
+		g.show_sub
+		dpy.dispatch EVENT_WINDOW 0 0 1	 # damage all
+	};
+	return 0
+}
+method close()
+{
+	ref menu m
+	set m sub_
+	if m ? <> {
+		m.hide
+	};
+	this.hide
+}
+
+method event(ev,x,y,data)
+{
+	var r
+	ref menu m
+	ref display dpy
+	set dpy win_
+	set m sub_
+	if m ? 0 {
+		if state_ ? 0 {
+			return 0
+		};
+	};
+	if ev ? 0 {
+	}, EVENT_MOUSE {
+		if m ? <> {
+			set r {m.event ev x y data}
+			if r ? <> {
+				return r
+			};
+		};
+		if (data - 1000) ? < {
+			if y - y_ - item_ ? <> {
+				if {this.is_inside x y} ? > {
+					set item_ y - y_
+					set damage_ 1
+				};
+			};
+			if data ? 0 {
+				# press
+				if state_ ? <> {
+					if {this.is_inside x y} ? > {
+						if m ? <> {
+							this.callback 1
+						};
+						return 1
+					}, <~ {
+					#	this.close
+					};
+				};
+			}, <> {
+				if (data - 35) ? <~ {
+					# move 
+					if state_ ? <> {
+						if damage_ ? <> {
+							if m ? <> {
+								this.callback 2
+							}, 0 {
+								this.callback 3
+							};
+						};
+					};
+				};
+			};
+		}, >~ {
+			# release
+			if state_ ? <> {
+				if {this.is_inside x y} ? > {
+					this.callback 0
+				}, <~ {
+				};
+			};
+		};
+	}, EVENT_KEYBOARD {
+		if data ? 27 {
+			set item_ 0
+			set damage_ 1
+			if state_ ? 0 {
+				set state_ 1
+				dpy.set_focus this
+			}, <> {
+				this.close
+			};
+		}, 13 {
+		}, 10 {
+			if state_ ? <> {
+				this.close
+				dpy.dispatch EVENT_WINDOW 0 0 1	 # damage all
+				this.callback 0
+			};
+		};
+	}, EVENT_WINDOW {
+		set damage_ 1
+		if m ? <> {
+			m.event ev x y data 
+		};
+	}, EVENT_FOCUS {
+	}, EVENT_UNFOCUS {
+		this.close
+	}, EVENT_DRAW {
+		if damage_ ? <> {
+			this.draw x_ y_ w_ h_ data_ item_
+		};
+		set damage_ 0
+		if m ? <> {
+			m.event ev x y data 
+		};
+	};
+
+	return 0;
+}
+
+method draw(x,y,w,h,data,item)
+{
+	var bg
+	var i,c
+	var entry
+	var entry_len
+	ref display s
+	set s win_
+	if (state_) ? <~ {return 0};
+	set i h
+	set entry data
+	loop {
+		if i ? <~ {break};
+		set i i - 1
+		loop {
+			if {peek entry 0} ? 
+			' '  9 {
+				set entry entry + 1
+			}, <> {
+				break
+			};
+		};
+		set c {peek entry 0}
+		loop {
+			if {peek entry 0} ? '"' {
+				set entry entry + 1
+				break
+			}, 0 {
+				break
+			}, <> {
+				set entry entry + 1
+			};
+		};
+		set entry_len 0
+		loop {
+			if {peek entry entry_len} ? 
+			0 '"' {
+				break
+			}, <> {
+				set entry_len entry_len + 1
+			};
+		};
+		
+		if i - item ? ~ {
+			set bg 4
+		}, <> {
+			if sub_ ? 0 {
+				set bg 5  
+			}, <> {
+				set bg 5
+			};
+		};
+		s.moveto x (y+i)
+		s.bold
+		s.color 0 bg
+		s.print " "
+		s.color 7 bg
+		s.printw entry entry_len (w_ - 2)
+		s.moveto (x + w_ - 1) (y+i)
+		if c ? 's' {
+			if i - item ? ~ {
+				s.print ">"
+			}, <> {
+				s.print "|"
+			};
+		}, <> {
+			s.print " "
+		};
+		loop {
+			if {peek entry 0} ? ';' {
+				set entry entry + 1
+				break
+			}, 0 {
+				break
+			}, <> {
+				set entry entry + 1
+			};
+		};
+	};
+	return 0
+}
+
+} # menu 
+
+
+

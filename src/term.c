@@ -1,6 +1,23 @@
 
 #include "term.h"
 
+var term__init_(var a);
+var term__deinit();
+
+var term__new(var self)
+{
+	self = (var)malloc(sizeof(struct term));
+	term__init_(self);
+	return self;
+}
+
+var term__dispose(var self)
+{
+	term__deinit();
+	free((void*)self);
+	return 0;
+}
+
 var term__size(var a)
 {
 	var *size = (void*)a;
@@ -18,6 +35,20 @@ var term__size(var a)
 	return 0;
 }
 
+var term__width(var a)
+{
+	struct term *self = (void*)a;
+	term__size(a);
+	return self->width;
+}
+
+var term__height(var a)
+{
+	struct term *self = (void*)a;
+	term__size(a);
+	return self->height;
+}
+
 
 #ifdef _WIN32
 HANDLE hStdin;
@@ -32,7 +63,7 @@ VOID ResizeEventProc(WINDOW_BUFFER_SIZE_RECORD);
 BOOL WINAPI CtrlHandler(DWORD fdwCtrlType);
 
 
-var term__init(var a)
+var term__init_(var a)
 {
     DWORD cNumRead, fdwMode, i;
     INPUT_RECORD irInBuf[128];
@@ -56,11 +87,11 @@ var term__init(var a)
     // https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences
     //
     // Enable the window and mouse input events.
-
-    fdwMode = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS /*ENABLE_PROCESSED_INPUT*/ /*| ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_VIRTUAL_TERMINAL_INPUT*/;
+    fdwMode = fdwSaveOldMode;
+    fdwMode |= /*ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS     | ENABLE_PROCESSED_INPUT |*/ ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_VIRTUAL_TERMINAL_INPUT;
     if (! SetConsoleMode(hStdin, fdwMode) )
         ErrorExit("SetConsoleMode");
-        /*
+  /*      
     fdwMode = ENABLE_PROCESSED_OUTPUT  | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     if (! SetConsoleMode(hStdout, fdwMode) )
         ErrorExit("SetConsoleMode");
@@ -276,7 +307,6 @@ BOOL WINAPI CtrlHandler(DWORD fdwCtrlType)
     case CTRL_C_EVENT:
         printf("Ctrl-C event\n\n");
         Beep(750, 300);
-        quit();
         return TRUE;
 
         // CTRL-CLOSE: confirm that the user wants to exit.
@@ -403,22 +433,25 @@ var clipboard__get()
 
 #else /*_WIN32 */
 
-struct termios orig_termios;
+struct termios orig_termios = {0};
 struct sigaction old_action;
+int term__flags = 0;
 
 void sigint_handler(int sig_no)
 {
+	/*
 	term__deinit();
     	sigaction(SIGINT, &old_action, NULL);
-    	kill(0, SIGINT);
+    	kill(0, SIGINT);*/
 }
 
-var term__init(var a)
+var term__init_(var a)
 {
 	var *term = (void*)a;
   	struct termios new_termios;
 	struct sigaction action;
 
+	term__flags = 1;
 	memset(&action, 0, sizeof(action));
 	action.sa_handler = &sigint_handler;
     	sigaction(SIGINT, &action, &old_action);
@@ -499,7 +532,7 @@ var clipboard__set(var txt, var len)
 	buffer__append((var)&path, (var)f, strlen(f));
 	mkfldr((char*)path.data + strlen(cmd));
 	buffer__append((var)&path, (var)cl, strlen(cl));
-	file__save(path.data + strlen(cmd), -1, len, txt);
+	file__save(path.data + strlen(cmd), -1, txt, len);
 	system((char*)path.data);
 	free((void*)path.data);
 	return 0;
@@ -536,17 +569,23 @@ var clipboard__get()
 
 var term__deinit()
 {
+	if (!term__flags) {
+		return 0;
+	}
 	printf("\x1B[?1000l\x1B[?1003l\x1B[?1015l\x1B[?1006l"); 
-	printf("\x1B[?1049l\x1B[r"); 
+	printf("\x1B[r"); 
+	printf("\x1B[?1049l"); 
 	fflush(stdout);
+	fflush(stderr);
+	fflush(stdin);
 #ifdef _WIN32
-    SetConsoleMode(hStdin, fdwSaveOldMode);
-    SetConsoleMode(hStdout, fdwSaveOldModeOut);
+	WaitForSingleObject(hStdin, 1);
+	SetConsoleMode(hStdin, fdwSaveOldMode);
+	SetConsoleMode(hStdout, fdwSaveOldModeOut);
 #else
+	usleep(1000);
 	tcsetattr(0, TCSANOW, &orig_termios);
-	/*system("tset");*/
 #endif
-	printf("\n");
 	return 0;
 }
 

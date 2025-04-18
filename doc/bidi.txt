@@ -1,0 +1,12 @@
+
+https://www.reddit.com/r/learn_arabic/comments/15n53t/is_there_a_quick_brown_fox_equivalent_in_arabic/
+
+ نص حكيم له سر قاطع وذو شأن عظيم مكتوب على ثوب أخضر ومغلف بجلد أزرق
+
+
+https://unicode.org/reports/tr9/#Basic_Display_Algorithm
+
+https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedBidiClass.txt
+
+https://github.com/fsufyan/BidiSharp/tree/master/BidiSharp/Source
+

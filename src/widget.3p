@@ -1,0 +1,19 @@
+
+include "button.3p"
+include "menu.3p"
+include "textarea.3p"
+
+# vitual base class common to all widgets
+
+class widget {
+field event_
+
+method event(type,x,y,data)
+{
+	var e
+	set e event_
+	return {e null this type x y data} 
+}
+
+} # class widget
+

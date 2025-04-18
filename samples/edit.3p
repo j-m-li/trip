@@ -1,0 +1,175 @@
+
+# comment
+
+include "../src/std.3p"
+include "../src/widget.3p"
+include "../src/display.3p"
+
+define MAX_NUM 20
+
+class edit {
+field menu_
+field text_
+field command_
+
+# this method has invalid this pointer
+method start_cb(me,v)
+{
+	ref edit m
+	set m me
+	m.show_menu 1 null
+}
+
+# this method has invalid this pointer
+method menu_cb(me,item,data, state)
+{
+	ref edit m
+	set m me
+	m.show_sub_menu item data state
+}
+
+method execute(cmd)
+{
+	if {str_cmp cmd "quit"} ? 0 {
+		quit
+	};
+}
+
+method get_menu(id)
+{
+	if {str_cmp id "file"} ? 0 {
+		return "=
+	item =22New=22 =22new=22;=
+	item =22Open=22 =22open=22;=
+	item =22Save=22 =22=save22;=
+	item =22Save as=22 =22saveas=22;=
+	item =22=22 =22=22;=
+	item =22Print=22 =22print=22;=
+	item =22=22 =22=22;=
+	item =22Quit=22 =22quit=22;=
+"
+	};
+	if {str_cmp id "edit"} ? 0 {
+		return "=
+	item =22Undo=22 =22undo=22;=
+	item =22Redo=22 =22redo=22;=
+	item =22=22 =22=22;=
+	item =22Cut=22 =22cut=22;=
+	item =22Copy=22 =22copy=22;=
+	item =22Paste=22 =22past=22;=
+	item =22=22 =22=22;=
+	item =22Select all=22 =22selectall=22;=
+	item =22=22 =22=22;=
+	item =22Preferences=22 =22preferences=22;=
+"
+	};
+	if {str_cmp id "search"} ? 0 {
+		return "=
+	item =22Find=22 =22find=22;=
+	item =22Find next=22 =22next=22;=
+	item =22Find previous=22 =22prev=22;=
+	item =22=22 =22=22;=
+	item =22Replace=22 =22replace=22;=
+"
+	};
+
+
+	if {str_cmp id "help"} ? 0 {
+		return "=
+	item =22About...=22 =22about=22;=
+"
+	};
+
+	if {str_cmp id ""} ? 0 {
+		return "=
+	item =22=22 =22=22;=
+"
+	};
+
+	return ""
+}
+
+method show_sub_menu(item,data,state)
+{
+	var it,cmd
+	ref menu m
+	set m menu_
+	set it {m.get_item item data}
+ 	set cmd {m.get_cmd it}
+
+	if {peek it 0} ? 0 {
+	}, 's' {
+		m.show state {this.get_menu cmd}
+		if state ? 0 {
+			m.hide
+		};
+	}, 'i' {
+		m.show state  ""
+		if state ? 0 {
+			this.execute cmd
+		};
+	};
+}
+
+
+method show_menu(v,sub)
+{
+	ref menu m
+	set m menu_
+	if {m.shown} ? 0 {
+		m.show 1 sub
+	}, <> {
+		m.show 0 0
+	};
+}
+
+method main(argc,argv)
+{
+	var x,root_menu
+	ref display dpy
+	ref button b
+	ref edit e
+	ref menu m
+	ref textarea t
+
+# ROOT Menu
+	set root_menu "=
+sub =22File=22 =22file=22;=
+sub =22Edit=22 =22edit=22;=
+sub =22Search=22 =22search=22;=
+sub =22Help=22 =22help=22;=
+item =22Quit=22 =22quit=22;=
+"
+# end menu
+	set dpy {new display}
+	
+	dpy.init
+
+	this.execute "bio"
+	clipboard__set "héllo...." 9
+
+
+	set t 0
+	set text_ {t.create_full dpy}
+	set e this
+	set menu_ {m.menu_create dpy e.menu_cb e root_menu}
+	b.start_btn_create dpy e.start_cb e
+
+	set x 0
+	loop {
+		if x ? <> {break};
+		set x {dpy.events}
+	}
+	return 0
+}
+
+} # class edit
+
+# args[0]: command line argument count
+# args[1]: array of string of each arguments
+func startup (argc, argv) {
+	ref edit e
+	set e {new edit}
+	e.main argc argv
+	return 0;
+}	

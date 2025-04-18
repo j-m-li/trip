@@ -2,13 +2,10 @@
 #define _SOCKET_H
 
 #ifdef _WIN32
-#include <winsock2.h>
-#include <stdio.h>
-#pragma comment(lib, "Ws2_32.lib")
+
 #else
        #include <netdb.h>
        #include <stdio.h>
-       #include <stdlib.h>
        #include <string.h>
        #include <sys/socket.h>
        #include <sys/types.h>

@@ -1,0 +1,82 @@
+
+class vm_fetch {
+wire I_reset
+wire I_branch
+wire I16_branch_vector
+wire I_trap
+wire I_mret
+wire I16_trap_vector
+wire I16_mret_vector
+wire I_stall
+wire I_invalidate
+wire O16_fetch_address
+wire I16_fetch_data
+field O16_pc_out
+field O16_next_pc_out
+field O16_instruction_out
+field O_valid_out
+field V16_pc
+
+
+method new()
+{
+	return {new vm_fetch}
+}
+
+method dispose()
+{
+	delete this
+}
+
+method always() 
+{
+}
+
+method clk() 
+{
+	var pc, next_pc
+
+	set pc V16_pc
+	set next_pc (pc + 1)
+	if (I_reset) ? <> {set pc RESET_VECTOR},
+	0 {
+		if (I_trap) ? <> {set pc I16_trap_vector},
+		0 {
+			if (I_mret) ? <> {set pc I16_mret_vector},
+			0 {
+				if (I_branch) ? 
+				<> {set pc I16_branch_vector},
+				0 {
+					if (I_stall + I_invalidate)
+					? 0 {
+						set pc next_pc
+					};
+				};
+
+			};
+		};
+	};
+
+	if (I_stall) ? 
+	<> {
+		set O_valid_out O_valid_out
+	}, 0 {
+		set O_valid_out 1
+		set O16_pc_out V16_pc	
+		set O16_next_pc_out next_pc	
+		set O16_instruction_out I16_fetch_data	
+	};
+	if (I_invalidate) ?
+	<> {
+		set O_valid_out 0
+	}; 
+
+	set V16_pc pc
+	set O16_fetch_address V16_pc
+	
+}
+
+} # end of class vm_fetch
+
+
+

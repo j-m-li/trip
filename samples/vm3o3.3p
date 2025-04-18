@@ -1,0 +1,589 @@
+
+# 0 1  2  3   4   5    6    7     8
+# 1 2  3  4   5   6    7    8     9
+# 1 4 13 40 121 364 1093 3280
+# 3 9 27 81 243 729 2187 6561 19683
+
+# 1 word = 8 trit = 16bit
+
+# 0 1 2 3  4  5  6   7   8   9   10   11   12   13    14    15    16
+# 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536
+#
+
+include "../src/std.3p"
+
+define BLOCK_SIZE 512 # 256 * 16bit 
+define MEM_SIZE 32768 # 512 * 64 = 32k bytes of main memory
+define MINUS_ONE 256
+define PLUS_ONE 1
+
+# https://github.com/rolandbernard/kleine-riscv/tree/master
+define RESET_VECTOR 0
+
+define ALU_ADD_SUB 0
+define ALU_DIV2 1
+define ALU_DIV3 2
+define ALU_MUL2 3
+define ALU_MUL3 4
+define ALU_SET 5
+define ALU_BAD 6
+
+define ALU_SEL_REG 0
+define ALU_SEL_IMM 1
+define ALU_SEL_PC 2
+define ALU_SEL_CSR 3
+
+define CMP_EQ 0
+define CMP_NE 1
+define CMP_LT 2
+define CMP_GT 3
+
+define WRITE_SEL_ALU 0
+define WRITE_SEL_LOAD 1
+define WRITE_SEL_NEXT_PC 2
+define WRITE_SEL_CSR 3
+
+include "vm_fetch.3p"
+
+class vm3o3 {
+field file_name_
+field file_length_
+field file_pos_
+field file_buf_
+field power_
+
+field R
+field PC
+field SP
+field FLAGS
+field MEM 
+
+field if_next_PC
+field if_branch_PC
+field if_instr
+
+field id_instr
+
+object vm_fetch fetch
+wire test
+
+method init() 
+{
+	set fetch {fetch.new}
+	fetch.clk
+
+	set fetch.I_reset 1
+	set R fetch.I_reset
+
+	set file_buf_ 0
+	set MEM {new bytes MEM_SIZE}
+	set R {new array 9}
+	
+}
+
+method dispose() 
+{
+	delete MEM
+	delete this
+}
+
+method read_block(pos)
+{
+	var l,i;
+
+	delete file_buf_
+	set file_buf_ 0
+	if (pos - file_length_) ? > {
+		set power_ 0
+		return 0	
+	};	
+	set l BLOCK_SIZE
+	if (pos + l - file_length_) ? > {
+		set l (file_length_ - pos)
+	};
+	set file_buf_ { file__load file_name_ pos l }
+	set file_pos_ pos
+	set i 0
+	loop {
+		if (l - i) ? <~ {break};
+		poke MEM i {peek file_buf_ i}
+		set i (i + 1)
+	}
+	return 0
+}
+
+method bad(a,b)
+{
+	return (a + b)
+}
+
+method sum3(a,b)
+{
+}
+
+method cons3(a,b)
+{
+}
+
+method any3(a,b)
+{
+}
+
+method add(a,b)
+{
+	var i
+	var o,c,s
+	set c 0
+	set i 0
+	set o 0
+	loop {
+		if (i) ? 8 {break};
+		set s 0
+		if (c) ? 
+		-1 {
+			set c 0
+			if {get_trit a i} ?
+			MINUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set c -1
+				}, 0 {
+					set c -1
+					set s 1
+				}, PLUS_ONE {
+					set s -1
+				};
+			}, 0 {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set c -1
+					set s 1
+				}, 0 {
+					set s -1
+				}, PLUS_ONE {
+				};
+			}, PLUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set s -1
+				}, 0 {
+				}, PLUS_ONE {
+					set s 1
+				};
+			};
+		}, 0 {
+			if {get_trit a i} ?
+			MINUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set c -1
+					set s 1
+				}, 0 {
+					set s -1
+				}, PLUS_ONE {
+				};
+			}, 0 {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set s -1
+				}, 0 {
+				}, PLUS_ONE {
+					set s 1
+				};
+			}, PLUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+				}, 0 {
+					set s 1
+				}, PLUS_ONE {
+					set c 1
+					set s -1
+				};
+			};
+		}, 1 {
+			set c 0
+			if {get_trit a i} ?
+			MINUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set s -1
+				}, 0 {
+				}, PLUS_ONE {
+					set s 1
+				};
+			}, 0 {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+				}, 0 {
+					set s 1
+				}, PLUS_ONE {
+					set c 1
+					set s -1
+				};
+			}, PLUS_ONE {
+				if {get_trit b i} ? 
+				MINUS_ONE {
+					set s 1
+				}, 0 {
+					set c 1
+					set s -1
+				}, PLUS_ONE {
+					set c 1
+				};
+			};
+		};
+		if (s) ? 
+		-1 {
+			set o {set_trit o i MINUS_ONE}
+		}, 1 {
+			set o {set_trit o i PLUS_ONE}
+		};
+		set i i + 1
+
+	}
+	return o
+}
+
+method div2(a)
+{
+	var i,d,t
+	var o,s,r
+	var r1,r2,r3,r4,r5
+	set i 1
+	set r 0
+	set o a
+	set s 0
+	
+	# range -3280 to +3280
+	loop {
+		if (i) ? 8 {break};
+		set r {this.add r {get_trit o 0}}
+		set o {this.div3 o}
+		set s {this.add s o}
+		set i i + 1
+	}
+
+	# add half of the remainder
+	# pow(2,8) = pow(3,5)      256 = 243
+	set r1 {this.mul2 r} # 2
+	set r2 {this.mul2 r1} # 3
+	set r3 {this.mul2 r2} # 4
+	set r4 {this.mul2 r3} # 5
+	set r5 {this.mul2 r4} # 6
+	set r {this.mul2 r5} # 7
+	set r {this.mul2 r} # 8
+
+	set r {this.div3 r}
+	set r {this.div3 r}
+	set r {this.div3 r}
+	set r {this.div3 r}
+	set r {this.div3 r}
+	
+	set s {this.add s r}
+
+	# fix off-by-one problem
+	set d {this.add s MINUS_ONE}
+	set t {this.add s d}
+	set t {this.add t {this.neg a}}
+	if {t2b t} ? >~ {
+		return d
+	};
+	return s	
+}
+
+method div3(a)
+{
+	var i
+	var o
+	set i 1
+	set o 0
+	loop {
+		if (i) ? 8 {break};
+		set o {set_trit o (i-1) ({get_trit a i})}
+		set i i + 1
+	}
+	return o
+}
+
+method mul2(a)
+{
+	return {this.add a a}
+}
+
+method mul3(a)
+{
+	var i
+	var o
+	set i 1
+	set o 0
+	loop {
+		if (i) ? 8 {break};
+		set o {set_trit o (i) ({get_trit a (i-1)})}
+		set i i + 1
+	}
+	return o
+}
+
+method neg(a)
+{
+	var i
+	var o
+	set i 0
+	set o 0
+	loop {
+		if (i) ? 8 {break};
+		if {get_trit a i} ? 
+		MINUS_ONE {
+			set o {set_trit o i PLUS_ONE}
+		}, PLUS_ONE {
+			set o {set_trit o i MINUS_ONE}
+		};
+		set i i + 1
+	}
+	return o
+}
+
+method clrt(a,b)
+{
+	return {set_trit a {t2b b} 0}
+}
+
+method post(a,b)
+{
+	return {set_trit a {t2b b} PLUS_ONE}
+}
+
+method negt(a,b)
+{
+	return {set_trit a {t2b b} MINUS_ONE}
+}
+
+method gett(a,b)
+{
+	return {get_trit a {t2b b}}
+}
+
+
+
+method ldi(i)
+{
+	return i
+}
+
+method bgt(a)
+{
+	if (FLAGS) ?
+	PLUS_ONE {
+
+	};
+}
+
+method blt(a)
+{
+	if (FLAGS) ?
+	MINUS_ONE {
+
+	};
+}
+
+method bra(a)
+{
+}
+
+method ld(a,m)
+{
+}
+
+method st(a,m)
+{
+}
+
+method cmp(a,b)
+{
+	if (a - b) ? 
+	< {
+		set FLAGS MINUS_ONE
+	}, 0 {
+		set FLAGS 0
+	}, > {
+		set FLAGS PLUS_ONE
+	};
+}
+
+
+
+method decode(clk) 
+{
+	var d,v
+	set if_instr {set_trit if_instr 7 10}
+	if {get_trit if_instr 7} ? 
+	MINUS_ONE {
+	}, 0 {
+	}, PLUS_ONE {
+
+	};
+	if (R[0]) ? 0 {
+		set R[0] 255 * 256
+		set R[0] 255
+		print "=0A"
+		tprint10 R[0]
+	};
+	loop {
+		#print "LOOP=0A"
+		#tprint10 R[0]
+		if (R[0]) ? 0 {break};
+		
+		set d {t2b {this.div2 R[0]}}
+		set v ({t2b R[0]} / 2) 
+		if (d - v) ? 
+		> {
+			tprint10 R[0]
+			print " "
+			print10 d
+			print " "
+			print10 v 
+			print "=0A"
+			if (d - v - 1) ?  > {quit};
+			if (d - v + 1) ?  < {quit};
+			if ({t2b R[0]} % 2) ?  ~ {quit};
+		};	
+	
+		set R[0] {this.add R[0] MINUS_ONE}
+	}
+	
+	print "=0ADONE=0A"
+	set R[0] {this.div2 R[0] }
+	print " "
+	tprint10 R[0]
+	quit 
+}
+
+method execute(clk)
+{
+}
+
+method memory(clk)
+{
+}
+
+method writeback(clk)
+{
+}
+
+method pipeline(clk) 
+{
+	set PC if_next_PC
+	set id_instr if_instr
+
+	fetch.clk
+	this.decode clk
+	this.execute clk
+	this.memory clk
+	this.writeback clk
+}
+
+method run(fname) 
+{
+	set file_name_ fname
+	set file_pos_ 0
+	set file_length_ { file__size file_name_ }
+	if (file_length_) ? < { return -1 };
+	set power_ 1
+
+	this.read_block 0
+	set PC 0
+	set R[0] 0
+	set if_next_PC 0
+	set if_branch_PC -1
+
+	loop {
+		if (power_) ? 0 {break};
+		this.pipeline 1
+	}
+	return 0;
+}
+
+} # end of class vm3o3
+
+func set_trit(a, n, v)
+{
+	var x,x1,i,a0
+	set x 256
+	set i 8
+	set a0 a
+	loop {
+		set i (i - 1)
+		set x1 (x / 2)
+		if (x1) ? 0 {break};
+		if (i - n) ? 0 {
+			if ((a0 % x) / x1) ? <> {set a0 (a0 - x1)};
+			if ((a0 % (x*256)) / (x1 * 256))  ? <> {set a0 (a0 - (x1*256))};
+			if (v) ? 
+			PLUS_ONE {
+				set a0 (a0 + x1)
+			}, MINUS_ONE {
+				set a0 (a0 + (256 * x1))
+			};
+			break
+		};
+		set x x1
+	}
+	return a0
+}
+
+
+func get_trit(a, n)
+{
+	var x,x1,i,a0
+	set x 256
+	set i 8
+	loop {
+		set i (i - 1)
+		set x1 (x / 2)
+		set a0 0
+		if ((a % x) / x1) ? <> {set a0 PLUS_ONE};
+		if ((a % (x*256)) / (x1 * 256))  ? <> {set a0 MINUS_ONE};
+		set x x1
+		if (i - n) ? 0 {break};
+		if (x) ? 0 {break};
+	}
+	return a0
+}
+
+func t2b(a)
+{
+	var i,s
+	set i 8
+	set s 0
+	loop {
+		if (i) ? 0 {break};
+		set i (i - 1)
+		if {get_trit a i} ? 
+		MINUS_ONE {
+			set s (s + s + s) - 1
+		}, 0 {
+			set s (s + s + s)
+		}, PLUS_ONE {
+			set s (s + s + s) + 1
+		};
+	}
+	return s
+}
+
+func tprint10(a)
+{
+	print10 {t2b a}
+}
+
+
+func startup (argc, argv) {
+	ref vm3o3 s
+	set s {new vm3o3} # alloc a class
+	s.init
+	s.run argv[1]
+	s.dispose
+	return 0
+}
+
+
+

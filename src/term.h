@@ -14,7 +14,6 @@
 #include <unistd.h>
 #endif
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 struct term {
@@ -26,10 +25,11 @@ struct term {
 	var evt_data;
 };
 
-var term__new();
-var term__size(var a);
-var term__init(var a);
-var term__wait(var term_, var timeout);
+var term__new(var self);
+var term__width(var self);
+var term__height(var self);
+var term__wait(var self, var timeout);
+var term__dispose(var self);
 var term__deinit();
 var clipboard__set(var txt, var len);
 var clipboard__get();

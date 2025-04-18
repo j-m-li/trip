@@ -1,7 +1,7 @@
 
 # comment
 
-include "../lib/std.3p"
+include "../src/std.3p"
 include "spec1.3p"
 
 define MY_CONST 3 		# defs
@@ -70,7 +70,7 @@ method do_something (inc) {
 	print tmp
 	delete tmp
 	set tmp {folder__list(".")}
-	print "FOLDERRRR:=0A"
+	print "FOLDER:=0A"
 	print tmp
 	delete tmp
 	four_args "bin/test.txt" -1 "hello" 3
@@ -82,9 +82,9 @@ method do_something (inc) {
 	delete s
 	print array_of_bytes
 	print10 array_of_integer[1]
-	print "BBBBBB=0A";
+	print "=0A";
 	print_hi
-	print "--------BBBBBB=0A"
+	print "=0A"
 
 	return one
 }
@@ -104,7 +104,7 @@ method call_hello() {
 func startup (argc, argv) {
 	var x, str, a, b, f
 	ref my_struct s
-
+	
 	print argv[0]
 	print argv[1]
 
@@ -126,19 +126,36 @@ multi-line=0A"
 	set a[0] a[x]
 	set a[1] 1 + 2 - 3
 	set a[1] 1 + 2 - (-3 * 4) / 5 % 6
+	set a[1] 12 * 5+(5 * (32 - 4)) + 3 - 203  
+	check_zero a[1]
+	set a[1] ((3 *(2*x+1)) / 2) - 10
+	check_zero a[1]
+	set a[1] ((1 *(2*4++3))) - 11
+	check_zero a[1]
+	set a[1] 1--2 - 3
+	check_zero a[1]
+	set a[1] 1-+2  + 1
+	check_zero a[1]
+	set a[1] 3*4+5 - 17
+	check_zero a[1]
+	set a[1] 3+4*5 - 23
+	check_zero a[1]
+	set a[1] 3*(4+5) - 27
+	check_zero a[1]
+	set a[1] 3*(4--5) - 27
+	check_zero a[1]
+
 
 	poke b 0 'A' 			# ascii 'A'
 	poke b 1 ({peek b 0} + 2) 	# ascii 'C'
 	poke b 2 0			# nil: end of string
 	print b     			# print AC
 
-	print "BOB=0A"
+	print "=0A"
 	hello_world
-	print "TOB=0A"
+	print "=0A"
 	set f s.call_hello 	# we can only assign methods to variables, not functions
-	print "__________________ JHGJHGGJH=0A"
 	f null			# indirect call of method with NULL "this"
-	print "JHGJHGGJH=0A"
 
 	print10 {ret_ten} # call the ret_ten function and print the returned value
 
@@ -151,9 +168,9 @@ multi-line=0A"
 	print "=0A"
 	if x ?
 		1 {print "x =3D 1"},
-		2 {print "x =3D 2"},
+		2 3 5 {print "x =3D 2"},
 		-20 {print "x =3D -20"},
-		'A' {print "x =3D A"},
+		'A' 'B' 'C' 'D' {print "x =3D A"},
 		<> {print "x not equal zero"},
 		>~ {print "x greater or equal zero"},
 		<~ {print "x less than or equal zero"}
@@ -163,12 +180,13 @@ multi-line=0A"
 	print "=0A"
 	print10 ((1+2)*3)
 	print "=0A"
-	while x ? > { 	# loop while x greater than 0
+	loop { 	# loop while x greater than 0
+		if x ? <~ {break};
 		print10 x
 		print "=0A"
 		set x x - 1
-		if x - 2 ? <~ continue; # skip and loop if x is less than 3
-		if x - 2 ? < break;	# stop loop if x is less than 4
+		if x - 2 ? <~ {continue}; # skip and loop if x is less than 3
+		if x - 2 ? < {break};	# stop loop if x is less than 4
 	};
 
 	s.do_something 7
@@ -178,9 +196,22 @@ multi-line=0A"
 	print argv[0]
 	print " is terminated=0A"
 
+	command 0 "ref my_struct x;x.call_hello;            " 30 
+	set s {singleton}
+	print10 s[0]
+	print "=0A"
 	return 0
 }
 
+
+func check_zero(z)
+{
+	if (z) ? <>{
+		print10 z;
+		print " <> 0 !! ERROR ERROR ERROR ERROR ERROR=0A"; 
+		quit -1
+	};
+}
 
 func hello_world() {
 	print "Hello World!=0A"

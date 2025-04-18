@@ -1,8 +1,12 @@
 
 #include "socket.h"
 
-#define BUF_SIZE 5000
+#ifdef _WIN32
+#pragma comment(lib, "Ws2_32.lib")
+#endif 
 
+#define BUF_SIZE 5000
+#if 0
 var socket__new(var host, var port)
 {
 		int argc = 3;
@@ -114,3 +118,4 @@ WSACleanup();
 
 #undef BUF_SIZE 
 
+#endif
